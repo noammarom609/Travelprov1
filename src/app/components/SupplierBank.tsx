@@ -1,12 +1,22 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
+import { useForm } from 'react-hook-form';
 import {
   Search, Plus, Filter, Eye, Edit2, Copy, Star, CheckCircle,
-  AlertTriangle, Clock, X, ChevronLeft, ChevronRight, Users
+  AlertTriangle, Clock, X, ChevronLeft, ChevronRight, Users, Loader2, Trash2
 } from 'lucide-react';
-import { suppliers } from './data';
+import type { Supplier } from './data';
+import { suppliersApi } from './api';
 import { appToast } from './AppToast';
 import { SupplierMap } from './SupplierMap';
+import { FormField, FormSelect, rules } from './FormField';
+
+interface NewSupplierForm {
+  name: string;
+  category: string;
+  region: string;
+  phone: string;
+}
 
 const categories = ['כל הקטגוריות', 'תחבורה', 'מזון', 'אטרקציות', 'לינה', 'בידור'];
 const regions = ['כל הארץ', 'צפון', 'מרכז', 'ירושלים', 'דרום'];
@@ -19,6 +29,71 @@ export function SupplierBank() {
   const [selectedRegion, setSelectedRegion] = useState('כל הארץ');
   const [selectedStatus, setSelectedStatus] = useState('הכל');
   const [showAddSupplier, setShowAddSupplier] = useState(false);
+
+  // ─── Live data from API ───
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // ─── New supplier form state ───
+  const [saving, setSaving] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  const { register, handleSubmit, formState: { errors, dirtyFields, isValid }, reset: resetSupplierForm } = useForm<NewSupplierForm>({
+    mode: 'onChange',
+    defaultValues: { name: '', category: 'תחבורה', region: 'צפון', phone: '' },
+  });
+
+  const fetchSuppliers = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await suppliersApi.list();
+      setSuppliers(data);
+    } catch (err) {
+      console.error('[SupplierBank] Failed to load suppliers:', err);
+      setError('שגיאה בטעינת ספקים');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSuppliers();
+  }, []);
+
+  const onSubmitSupplier = async (data: NewSupplierForm) => {
+    try {
+      setSaving(true);
+      await suppliersApi.create({
+        name: data.name.trim(),
+        category: data.category,
+        region: data.region,
+        phone: data.phone.trim(),
+      });
+      appToast.success('הספק נוסף בהצלחה למאגר', 'ניתן כעת לשייך אותו לפרויקטים');
+      setShowAddSupplier(false);
+      resetSupplierForm();
+      fetchSuppliers();
+    } catch (err) {
+      console.error('[SupplierBank] Failed to create supplier:', err);
+      appToast.error('שגיאה ביצירת ספק', String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteSupplier = async (id: string, name: string) => {
+    try {
+      await suppliersApi.delete(id);
+      appToast.success(`הספק "${name}" נמחק בהצלחה`);
+      fetchSuppliers();
+    } catch (err) {
+      console.error('[SupplierBank] Failed to delete supplier:', err);
+      appToast.error('שגיאה במחיקת ספק', String(err));
+    }
+  };
 
   const filtered = suppliers.filter(s => {
     const matchesSearch = !search || s.name.includes(search) || s.category.includes(search) || s.region.includes(search);
@@ -36,12 +111,13 @@ export function SupplierBank() {
     setSelectedRegion('כל הארץ');
     setSelectedStatus('הכל');
     setSearch('');
+    setCurrentPage(1);
   };
 
-  const totalSuppliers = 128;
-  const verifiedCount = 102;
-  const pendingCount = 14;
-  const docsIssues = 12;
+  const totalSuppliers = suppliers.length;
+  const verifiedCount = suppliers.filter(s => s.verificationStatus === 'verified').length;
+  const pendingCount = suppliers.filter(s => s.verificationStatus === 'pending').length;
+  const docsIssues = suppliers.filter(s => s.notes !== '-').length;
 
   return (
     <div className="p-4 lg:p-6 mx-auto font-['Assistant',sans-serif]" dir="rtl">
@@ -118,6 +194,18 @@ export function SupplierBank() {
       </div>
 
       {/* Table */}
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-[#e7e1da] shadow-sm mb-5">
+          <Loader2 size={32} className="animate-spin text-[#ff8c00] mb-3" />
+          <p className="text-[14px] text-[#8d785e]">טוען ספקים...</p>
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-[#e7e1da] shadow-sm mb-5">
+          <AlertTriangle size={32} className="text-[#ef4444] mb-3" />
+          <p className="text-[14px] text-[#ef4444]">{error}</p>
+          <button onClick={fetchSuppliers} className="mt-3 text-[13px] text-[#ff8c00] hover:text-[#e67e00]" style={{ fontWeight: 600 }}>נסה שוב</button>
+        </div>
+      ) : (
       <div className="bg-white rounded-2xl border border-[#e7e1da] shadow-sm overflow-hidden mb-5">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -129,7 +217,7 @@ export function SupplierBank() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((supplier) => (
+              {filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map((supplier) => (
                 <tr key={supplier.id} className="border-b border-[#ece8e3] hover:bg-[#f5f3f0]/50 transition-colors">
                   <td className="p-3">
                     <div className="flex items-center gap-3">
@@ -187,7 +275,13 @@ export function SupplierBank() {
                     <div className="flex items-center gap-1">
                       <button onClick={() => navigate(`/suppliers/${supplier.id}`)} className="p-1.5 text-[#8d785e] hover:text-[#ff8c00] hover:bg-[#ff8c00]/10 rounded-lg transition-all"><Eye size={15} /></button>
                       <button onClick={() => navigate(`/suppliers/${supplier.id}`)} className="p-1.5 text-[#8d785e] hover:text-[#ff8c00] hover:bg-[#ff8c00]/10 rounded-lg transition-all"><Edit2 size={15} /></button>
-                      <button onClick={() => appToast.info('הספק הועתק', 'פרטי הספק הועתקו ללוח')} className="p-1.5 text-[#8d785e] hover:text-[#181510] hover:bg-[#ece8e3] rounded-lg transition-all"><Copy size={15} /></button>
+                      <button onClick={() => {
+                        const text = `${supplier.name}\nקטגוריה: ${supplier.category}\nאזור: ${supplier.region}\nטלפון: ${supplier.phone}\nדירוג: ${supplier.rating}`;
+                        navigator.clipboard.writeText(text).then(() => {
+                          appToast.info('הספק הועתק', `פרטי "${supplier.name}" הועתקו ללוח`);
+                        }).catch(() => appToast.info('הספק הועתק', 'פרטי הספק הועתקו ללוח'));
+                      }} className="p-1.5 text-[#8d785e] hover:text-[#181510] hover:bg-[#ece8e3] rounded-lg transition-all"><Copy size={15} /></button>
+                      <button onClick={() => handleDeleteSupplier(supplier.id, supplier.name)} className="p-1.5 text-[#8d785e] hover:text-[#ff8c00] hover:bg-[#ff8c00]/10 rounded-lg transition-all"><Trash2 size={15} /></button>
                     </div>
                   </td>
                 </tr>
@@ -198,16 +292,47 @@ export function SupplierBank() {
 
         {/* Pagination */}
         <div className="flex items-center justify-between p-3 bg-[#f5f3f0] border-t border-[#e7e1da]">
-          <span className="text-[12px] text-[#8d785e]">מציג {filtered.length} מתוך {totalSuppliers} ספקים</span>
-          <div className="flex items-center gap-1">
-            <button className="w-7 h-7 rounded-md flex items-center justify-center text-[#8d785e] hover:bg-white transition-colors"><ChevronRight size={14} /></button>
-            <button className="w-7 h-7 rounded-md flex items-center justify-center bg-[#ff8c00] text-white text-[12px]" style={{ fontWeight: 600 }}>1</button>
-            <button className="w-7 h-7 rounded-md flex items-center justify-center text-[#8d785e] hover:bg-white text-[12px] transition-colors">2</button>
-            <button className="w-7 h-7 rounded-md flex items-center justify-center text-[#8d785e] hover:bg-white text-[12px] transition-colors">3</button>
-            <button className="w-7 h-7 rounded-md flex items-center justify-center text-[#8d785e] hover:bg-white transition-colors"><ChevronLeft size={14} /></button>
-          </div>
+          <span className="text-[12px] text-[#8d785e]">
+            מציג {Math.min((currentPage - 1) * ITEMS_PER_PAGE + 1, filtered.length)}-{Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} מתוך {filtered.length} ספקים
+          </span>
+          {(() => {
+            const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+            return (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-[#8d785e] hover:bg-white transition-colors disabled:opacity-30"
+                >
+                  <ChevronRight size={14} />
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`w-7 h-7 rounded-md flex items-center justify-center text-[12px] transition-colors ${
+                      currentPage === page
+                        ? 'bg-[#ff8c00] text-white'
+                        : 'text-[#8d785e] hover:bg-white'
+                    }`}
+                    style={{ fontWeight: currentPage === page ? 600 : 400 }}
+                  >
+                    {page}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-[#8d785e] hover:bg-white transition-colors disabled:opacity-30"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+              </div>
+            );
+          })()}
         </div>
       </div>
+      )}
 
       {/* ══════════ Supplier Map ══════════ */}
       <div className="mt-6">
@@ -216,46 +341,64 @@ export function SupplierBank() {
 
       {/* Add supplier modal */}
       {showAddSupplier && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowAddSupplier(false)}>
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => { setShowAddSupplier(false); resetSupplierForm(); }}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-[20px] text-[#181510]" style={{ fontWeight: 700 }}>הוספת ספק חדש</h2>
-              <button onClick={() => setShowAddSupplier(false)} className="text-[#8d785e] hover:text-[#181510]"><X size={20} /></button>
+              <button onClick={() => { setShowAddSupplier(false); resetSupplierForm(); }} className="text-[#8d785e] hover:text-[#181510]"><X size={20} /></button>
             </div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-[13px] text-[#6b5d45] mb-1 block" style={{ fontWeight: 600 }}>שם הספק</label>
-                <input className="w-full border border-[#e7e1da] rounded-lg px-3 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#ff8c00]/30 focus:border-[#ff8c00]" />
-              </div>
+            <form onSubmit={handleSubmit(onSubmitSupplier)} className="space-y-3">
+              <FormField
+                label="שם הספק"
+                required
+                error={errors.name}
+                isDirty={dirtyFields.name}
+                placeholder="שם הספק"
+                {...register('name', rules.requiredMin('שם הספק', 2))}
+              />
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[13px] text-[#6b5d45] mb-1 block" style={{ fontWeight: 600 }}>קטגוריה</label>
-                  <select className="w-full border border-[#e7e1da] rounded-lg px-3 py-2.5 text-[14px] bg-white focus:outline-none focus:ring-2 focus:ring-[#ff8c00]/30 focus:border-[#ff8c00]">
-                    {categories.filter(c => c !== 'כל הקטגוריות').map(c => <option key={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[13px] text-[#6b5d45] mb-1 block" style={{ fontWeight: 600 }}>אזור</label>
-                  <select className="w-full border border-[#e7e1da] rounded-lg px-3 py-2.5 text-[14px] bg-white focus:outline-none focus:ring-2 focus:ring-[#ff8c00]/30 focus:border-[#ff8c00]">
-                    {regions.filter(r => r !== 'כל הארץ').map(r => <option key={r}>{r}</option>)}
-                  </select>
-                </div>
+                <FormSelect
+                  label="קטגוריה"
+                  error={errors.category}
+                  isDirty={dirtyFields.category}
+                  {...register('category')}
+                >
+                  {categories.filter(c => c !== 'כל הקטגוריות').map(c => <option key={c}>{c}</option>)}
+                </FormSelect>
+                <FormSelect
+                  label="אזור"
+                  error={errors.region}
+                  isDirty={dirtyFields.region}
+                  {...register('region')}
+                >
+                  {regions.filter(r => r !== 'כל הארץ').map(r => <option key={r}>{r}</option>)}
+                </FormSelect>
               </div>
-              <div>
-                <label className="text-[13px] text-[#6b5d45] mb-1 block" style={{ fontWeight: 600 }}>טלפון</label>
-                <input className="w-full border border-[#e7e1da] rounded-lg px-3 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#ff8c00]/30 focus:border-[#ff8c00]" />
-              </div>
+              <FormField
+                label="טלפון"
+                placeholder="05X-XXXXXXX"
+                error={errors.phone}
+                isDirty={dirtyFields.phone}
+                {...register('phone', rules.israeliPhone(false))}
+              />
               <div className="flex gap-3 pt-2">
-                <button onClick={() => { setShowAddSupplier(false); appToast.success('הספק נוסף בהצלחה למאגר', 'ניתן כעת לשייך אותו לפרויקטים'); }} className="flex-1 bg-[#ff8c00] hover:bg-[#e67e00] text-white py-2.5 rounded-xl transition-colors" style={{ fontWeight: 600 }}>הוסף ספק</button>
-                <button onClick={() => setShowAddSupplier(false)} className="px-5 border border-[#e7e1da] rounded-xl hover:bg-[#f5f3f0] transition-colors">ביטול</button>
+                <button
+                  type="submit"
+                  disabled={saving || !isValid}
+                  className="flex-1 bg-[#ff8c00] hover:bg-[#e67e00] disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
+                  style={{ fontWeight: 600 }}
+                >
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : 'הוסף ספק'}
+                </button>
+                <button type="button" onClick={() => { setShowAddSupplier(false); resetSupplierForm(); }} className="px-5 border border-[#e7e1da] rounded-xl hover:bg-[#f5f3f0] transition-colors">ביטול</button>
               </div>
-            </div>
+            </form>
             <div className="border-t border-[#e7e1da] mt-4 pt-4 flex gap-2">
-              <button onClick={() => { setShowAddSupplier(false); navigate('/suppliers/import'); }} className="text-[13px] text-[#ff8c00] hover:text-[#e67e00]" style={{ fontWeight: 600 }}>
+              <button onClick={() => { setShowAddSupplier(false); resetSupplierForm(); navigate('/suppliers/import'); }} className="text-[13px] text-[#ff8c00] hover:text-[#e67e00]" style={{ fontWeight: 600 }}>
                 ייבוא מאקסל →
               </button>
               <span className="text-[#c4b89a]">|</span>
-              <button onClick={() => { setShowAddSupplier(false); navigate('/suppliers/classify'); }} className="text-[13px] text-[#ff8c00] hover:text-[#e67e00]" style={{ fontWeight: 600 }}>
+              <button onClick={() => { setShowAddSupplier(false); resetSupplierForm(); navigate('/suppliers/classify'); }} className="text-[13px] text-[#ff8c00] hover:text-[#e67e00]" style={{ fontWeight: 600 }}>
                 אשף סיווג →
               </button>
             </div>

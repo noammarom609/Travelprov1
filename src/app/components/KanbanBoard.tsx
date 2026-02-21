@@ -68,9 +68,11 @@ const FEATURE_OPTIONS = [
   'מוצרים סרוקים',
   'רשימת פרויקטים',
   'תשתית כללית',
+  'אודיט ותיקוני באגים',
+  'Layout וניווט',
 ];
 
-const STORAGE_KEY = 'travelpro-kanban-v3';
+const STORAGE_KEY = 'travelpro-kanban-v4';
 
 const VERSION_TABS: { id: Version; label: string; subtitle: string; color: string }[] = [
   { id: 'V1', label: 'V1', subtitle: 'MVP — 9 מסכים', color: '#ff8c00' },
@@ -200,6 +202,48 @@ const INITIAL_TASKS: Task[] = [
   {
     id: 'd9', title: 'מוצרים סרוקים — תצוגת תוצאות', description: 'מסך הצגת מוצרים שיובאו/נסרקו עם פילטרים ופעולות סיווג.',
     type: 'FEATURE', priority: 'MEDIUM', status: 'done', feature: 'מוצרים סרוקים', estimate: '5h', tags: ['סריקה'], createdAt: '2026-02-15', version: 'V1',
+  },
+
+  // ──── V1 הושלם — אודיט כפתורים (21/02/2026) ────
+  {
+    id: 'audit1', title: 'תיקון כפתור "פרויקט חדש" ברשימת הפרויקטים',
+    description: 'הכפתור עשה navigate("/") במקום לפתוח את המודאל. תוקן לעבוד דרך URL param ?newProject=true שה-Layout מזהה ופותח אוטומטית את מודאל יצירת הפרויקט. עובד מכל דף באפליקציה.',
+    type: 'BUG', priority: 'HIGH', status: 'done', feature: 'רשימת פרויקטים', estimate: '30m', tags: ['אודיט', 'פרויקטים', 'ניווט'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'audit2', title: 'תיקון כפתור "הדפס" בתצוגת לקוח (ClientQuote)',
+    description: 'כפתור מת — לא היה onClick בכלל, רק עיצוב. הוספת window.print() שפותח את דיאלוג ההדפסה/שמירת PDF של הדפדפן.',
+    type: 'BUG', priority: 'MEDIUM', status: 'done', feature: 'תצוגת לקוח', estimate: '15m', tags: ['אודיט', 'תצוגת לקוח'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'audit3', title: 'תיקון כפתור "שיתוף" בתצוגת לקוח',
+    description: 'כפתור מת — ללא פונקציונליות. הוספת Web Share API (במובייל פותח תפריט שיתוף) ובדסקטופ מעתיק את הקישור ללוח עם הודעת טוסט.',
+    type: 'BUG', priority: 'MEDIUM', status: 'done', feature: 'תצוגת לקוח', estimate: '20m', tags: ['אודיט', 'תצוגת לקוח', 'שיתוף'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'audit4', title: 'תיקון כפתור "העתק" בבנק ספקים — העתקה אמיתית',
+    description: 'הכפתור הציג טוסט "הספק הועתק" אבל לא העתיק שום דבר באמת. תוקן להעתיק את כל פרטי הספק (שם, קטגוריה, אזור, טלפון, דירוג) ללוח באמצעות navigator.clipboard.writeText().',
+    type: 'BUG', priority: 'HIGH', status: 'done', feature: 'בנק ספקים', estimate: '20m', tags: ['אודיט', 'בנק ספקים', 'clipboard'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'audit5', title: 'פגינציה אמיתית בבנק ספקים',
+    description: 'כפתורי הפגינציה 1,2,3 והחצים היו דקורטיביים — הארדקודד ללא לוגיקה. הוחלפו בפגינציה עובדת עם state של currentPage, חיתוך נתונים עם slice(), כפתורי עמודים דינמיים, חצים עם disabled, ואיפוס לעמוד 1 בשינוי פילטרים.',
+    type: 'BUG', priority: 'HIGH', status: 'done', feature: 'בנק ספקים', estimate: '45m', tags: ['אודיט', 'בנק ספקים', 'פגינציה'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'audit6', title: 'תיקון כפתור ⋮ (MoreVertical) בפרויקטים דחופים בדשבורד',
+    description: 'כפתור מת — לחיצה לא עשתה כלום. תוקן לנווט לדף הפרויקט הרלוונטי עם navigate לדף הפרויקט.',
+    type: 'BUG', priority: 'MEDIUM', status: 'done', feature: 'דשבורד', estimate: '15m', tags: ['אודיט', 'דשבורד', 'ניווט'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'audit7', title: 'תיקון כפתור עזרה (HelpCircle) בהדר העליון',
+    description: 'כפתור מת. תוקן לנווט לדף ה-PRD (מסמך מוצר / עזרה).',
+    type: 'BUG', priority: 'LOW', status: 'done', feature: 'Layout וניווט', estimate: '10m', tags: ['אודיט', 'Layout', 'ניווט'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'audit8', title: 'אודיט כפתור-כפתור מלא — ביקורת כל הקומפוננטות',
+    description: 'מעבר שיטתי על כל כפתור בכל קומפוננטה באפליקציה: בדיקה שכל לחיצה מובילה למקום הנכון, שהפונקציה מאחורי הכפתור עובדת, ושהנתונים נשמרים/נקראים מהבאקאנד כמו שצריך. נמצאו 7 בעיות ותוקנו, שאר הכפתורים (סיידבר, CRUD ספקים, מודאל פרויקטים, עורך הצעות, חיפוש גלובלי, התראות, Logout ועוד) נמצאו תקינים.',
+    type: 'TASK', priority: 'HIGH', status: 'done', feature: 'אודיט ותיקוני באגים', estimate: '3h', tags: ['אודיט', 'QA', 'כפתורים'], createdAt: '2026-02-21', version: 'V1',
   },
 
   // ════════════════════════════════════════
@@ -672,6 +716,7 @@ function TaskModal({
   const [form, setForm] = useState<Task>({ ...task });
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  const [titleError, setTitleError] = useState('');
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -687,12 +732,24 @@ function TaskModal({
 
   const update = (field: keyof Task, value: string | string[]) => {
     setForm(prev => ({ ...prev, [field]: value }));
+    if (field === 'title') setTitleError('');
   };
 
   const handleSave = () => {
-    if (!form.title.trim()) return;
+    if (!form.title.trim()) {
+      setTitleError('כותרת המשימה היא שדה חובה');
+      titleRef.current?.focus();
+      return;
+    }
+    if (form.title.trim().length < 2) {
+      setTitleError('כותרת חייבת להכיל לפחות 2 תווים');
+      titleRef.current?.focus();
+      return;
+    }
     onSave(form);
   };
+
+  const isTitleValid = form.title.trim().length >= 2;
 
   const selectArrowStyle = {
     backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238d785e' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
@@ -762,8 +819,20 @@ function TaskModal({
                   value={form.title}
                   onChange={(e) => update('title', e.target.value)}
                   placeholder="שם המשימה..."
-                  className="w-full bg-[#f8f7f5] border border-[#e7e1da] rounded-xl px-4 py-3 text-[14px] text-[#181510] placeholder-[#b8a990] focus:outline-none focus:border-[#ff8c00] focus:ring-2 focus:ring-[#ff8c00]/10 transition-all"
+                  className={`w-full bg-[#f8f7f5] border rounded-xl px-4 py-3 text-[14px] text-[#181510] placeholder-[#b8a990] focus:outline-none focus:ring-2 transition-all ${
+                    titleError
+                      ? 'border-red-400 focus:border-red-400 focus:ring-red-200 bg-red-50/30'
+                      : isTitleValid
+                        ? 'border-green-400 focus:border-green-400 focus:ring-green-200'
+                        : 'border-[#e7e1da] focus:border-[#ff8c00] focus:ring-[#ff8c00]/10'
+                  }`}
                 />
+                {titleError && (
+                  <p className="text-[12px] text-red-500 mt-1 flex items-center gap-1" style={{ fontWeight: 500 }}>
+                    <AlertCircle size={12} />
+                    {titleError}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-[13px] text-[#181510] mb-2" style={{ fontWeight: 600 }}>תיאור</label>
@@ -971,7 +1040,8 @@ function TaskModal({
             </button>
             <button
               onClick={handleSave}
-              className="text-[13px] text-white bg-[#ff8c00] hover:bg-[#e67e00] px-6 py-2.5 rounded-xl transition-colors shadow-md shadow-[#ff8c00]/20"
+              disabled={!isTitleValid}
+              className="text-[13px] text-white bg-[#ff8c00] hover:bg-[#e67e00] disabled:opacity-50 disabled:cursor-not-allowed px-6 py-2.5 rounded-xl transition-colors shadow-md shadow-[#ff8c00]/20"
               style={{ fontWeight: 600 }}
             >
               {isNew ? 'צור משימה' : 'שמור שינויים'}

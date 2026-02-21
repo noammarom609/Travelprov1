@@ -1,0 +1,434 @@
+import { Hono } from "npm:hono";
+import { cors } from "npm:hono/cors";
+import { logger } from "npm:hono/logger";
+import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
+import * as kv from "./kv_store.tsx";
+
+const app = new Hono();
+app.use("*", logger(console.log));
+app.use(
+  "/*",
+  cors({
+    origin: "*",
+    allowHeaders: ["Content-Type", "Authorization"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    exposeHeaders: ["Content-Length"],
+    maxAge: 600,
+  }),
+);
+
+const PREFIX = "/make-server-0045c7fc";
+
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+// ═══════════════════════════════════════════════════
+// SEED DATA
+// ═══════════════════════════════════════════════════
+
+const SEED_SUPPLIERS = [
+  { id: "1", name: "הסעות מסיילי הצפון", phone: "514423982", category: "תחבורה", categoryColor: "#3b82f6", region: "צפון", rating: 4.5, verificationStatus: "verified", notes: "-", icon: "🚌" },
+  { id: "2", name: "קייטרינג סאמי המזרח", phone: "032115664", category: "מזון", categoryColor: "#22c55e", region: "ירושלים", rating: 4.0, verificationStatus: "pending", notes: "מסמכים חסרים", icon: "🍽️" },
+  { id: "3", name: "ספורט אתגרי בנגב", phone: "520038441", category: "אטרקציות", categoryColor: "#a855f7", region: "דרום", rating: 5.0, verificationStatus: "unverified", notes: "נדרש חידוש ביטוח", icon: "🏃" },
+  { id: "4", name: "מלון פלאזה - מרכז", phone: "510098442", category: "לינה", categoryColor: "#ec4899", region: "מרכז", rating: 3.2, verificationStatus: "verified", notes: "-", icon: "🏨" },
+  { id: "5", name: "יקב רמת נפתלי", phone: "049876543", category: "אטרקציות", categoryColor: "#a855f7", region: "צפון", rating: 4.8, verificationStatus: "verified", notes: "-", icon: "🍷" },
+  { id: "6", name: "אוטובוסים הגליל", phone: "047654321", category: "תחבורה", categoryColor: "#3b82f6", region: "צפון", rating: 4.2, verificationStatus: "verified", notes: "-", icon: "🚌" },
+];
+
+const SEED_PROJECTS = [
+  { id: "4829-24", name: "נופש שנתי גליל עליון", client: "סייבר-גלובל", company: "סייבר-גלובל", participants: 120, region: "גליל עליון", status: "בניית הצעה", statusColor: "#f97316", totalPrice: 102000, pricePerPerson: 850, profitMargin: 25, date: "2024-03-15" },
+  { id: "4830-24", name: "כנס מכירות Q1", client: "טכנו-פלוס", company: "טכנו-פלוס", participants: 80, region: "אילת", status: "ליד חדש", statusColor: "#3b82f6", totalPrice: 0, pricePerPerson: 0, profitMargin: 0, date: "2024-03-20" },
+  { id: "4831-24", name: "יום כיף צוות פיתוח", client: "קליקסופט", company: "קליקסופט", participants: 45, region: "מרכז", status: "הצעה נשלחה", statusColor: "#8b5cf6", totalPrice: 38250, pricePerPerson: 850, profitMargin: 22, date: "2024-03-10" },
+  { id: "4832-24", name: "אירוע חברה שנתי", client: "מדיה-וורקס", company: "מדיה-וורקס", participants: 200, region: "ירושלים", status: "אושר", statusColor: "#22c55e", totalPrice: 180000, pricePerPerson: 900, profitMargin: 28, date: "2024-02-28" },
+  { id: "4833-24", name: "סדנת גיבוש הנהלה", client: "פיננס-פרו", company: "פיננס-פרו", participants: 25, region: "גולן", status: "מחיר בהערכה", statusColor: "#eab308", totalPrice: 0, pricePerPerson: 0, profitMargin: 0, date: "2024-03-18" },
+];
+
+const SEED_QUOTE_ITEMS = [
+  { id: "qi-1", projectId: "4829-24", type: "תחבורה", icon: "🚌", name: "אוטובוסים הגליל", supplier: "אוטובוסים הגליל", description: "3 אוטובוסים ממוגנים, איסוף מהמרכז", cost: 7500, sellingPrice: 9000, profitWeight: 2, status: "approved" },
+  { id: "qi-2", projectId: "4829-24", type: "פעילות בוקר", icon: "🎯", name: "רייזרס בגוף", supplier: "רייזרס בגוף", description: "מתחם ג׳ונגל/רייזרים", cost: 28800, sellingPrice: 36000, profitWeight: 4, status: "modified", alternatives: [{ id: "a1", name: "רייזרס בגוף", description: "מתחם ג׳ונגל/רייזרים", costPerPerson: 240, selected: true }, { id: "a2", name: "קייקי הגליל", description: "מתחם פעילות/רייזרים", costPerPerson: 110, selected: false }, { id: "a3", name: "ספק מהאינטרנט", description: "מתחם ביער/בגוף", costPerPerson: 180, selected: false }] },
+];
+
+const SEED_TIMELINE_EVENTS = [
+  { id: "te-1", projectId: "4829-24", time: "08:00", title: "יציאה ואיסוף", description: "נקודת מפגש: חניון הבימה מיני גלילות. חלוקת ערכות בוקר.", icon: "🚌" },
+  { id: "te-2", projectId: "4829-24", time: "10:30", title: "פעילות בוקר - רייזרים", description: "הגעה למתחם רייזרים בגוף. מדריך בטיחות ויציאה למסלול!", icon: "🎯" },
+  { id: "te-3", projectId: "4829-24", time: "13:00", title: "ארוחת צהריים", description: "ארוחת בשרים כשרה למהדרין במסעדת \"החווה\".", icon: "🍽️" },
+];
+
+const SEED_SUPPLIER_CONTACTS = [
+  { id: "sc-1", supplierId: "5", name: "יצחק ברוך", role: "בעלים ומנכ\"ל", phone: "054-1234567", email: "yitzhak@ramatnaftali.co.il", primary: true },
+  { id: "sc-2", supplierId: "5", name: "מיכל לוי", role: "מנהלת אירועים ושיווק", phone: "050-7654321", email: "michal@ramatnaftali.co.il", primary: false },
+  { id: "sc-3", supplierId: "6", name: "דוד כהן", role: "מנהל תפעול", phone: "052-9876543", email: "david@galil-bus.co.il", primary: true },
+];
+
+const SEED_SUPPLIER_PRODUCTS = [
+  { id: "sp-1", supplierId: "5", name: "סיור ביקב וטעימות יין", price: 120, description: "סיור מודרך בכרמים ובחביות, הדגמת תהליך הייצור.", unit: "אדם" },
+  { id: "sp-2", supplierId: "5", name: "פלטת גבינות גליליות", price: 85, description: "מבחר גבינות מחלבות בוטיק בגליל.", unit: "אדם" },
+  { id: "sp-3", supplierId: "5", name: "אירועי חברה בוטיק", price: 5000, description: "אירוח פרטי עד 50 איש. ארוחת שף בתנור אבן.", unit: "אירוע" },
+  { id: "sp-4", supplierId: "6", name: "אוטובוס ממוגן 55 מקומות", price: 2500, description: "אוטובוס מפואר עם Wi-Fi, מיזוג ומושבים מרופדים.", unit: "יום" },
+];
+
+const SEED_SUPPLIER_DOCUMENTS = [
+  { id: "sd-1", supplierId: "5", name: "רישיון עסק", expiry: "2026-01-01", status: "valid" },
+  { id: "sd-2", supplierId: "5", name: "תעודת כשרות", expiry: "2024-09-15", status: "warning" },
+  { id: "sd-3", supplierId: "5", name: "ביטוח צד ג'", expiry: "2024-05-01", status: "expired" },
+  { id: "sd-4", supplierId: "6", name: "רישיון הובלה", expiry: "2025-12-31", status: "valid" },
+  { id: "sd-5", supplierId: "6", name: "ביטוח נוסעים", expiry: "2025-06-30", status: "valid" },
+];
+
+// Lookup tables
+const CATEGORY_COLORS: Record<string, string> = { "תחבורה": "#3b82f6", "מזון": "#22c55e", "אטרקציות": "#a855f7", "לינה": "#ec4899", "בידור": "#f59e0b" };
+const CATEGORY_ICONS: Record<string, string> = { "תחבורה": "🚌", "מזון": "🍽️", "אטרקציות": "🏃", "לינה": "🏨", "בידור": "🎭" };
+const STATUS_COLORS: Record<string, string> = { "ליד חדש": "#3b82f6", "בניית הצעה": "#f97316", "הצעה נשלחה": "#8b5cf6", "אושר": "#22c55e", "מחיר בהערכה": "#eab308", "בביצוע": "#ff8c00" };
+
+// ═══════════════════════════════════════════════════
+// ROUTES
+// ═══════════════════════════════════════════════════
+
+app.get(`${PREFIX}/health`, (c) => c.json({ status: "ok" }));
+
+// ─── AUTH ─────────────────────────────────────────
+app.post(`${PREFIX}/signup`, async (c) => {
+  try {
+    const { email, password, name } = await c.req.json();
+    if (!email || !password) return c.json({ error: "אימייל וסיסמה הם שדות חובה" }, 400);
+    if (password.length < 6) return c.json({ error: "סיסמה חייבת להכיל לפחות 6 תווים" }, 400);
+    const supabaseAdmin = createClient(Deno.env.get("SUPABASE_URL"), Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"));
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({ email, password, user_metadata: { name: name || "" }, email_confirm: true });
+    if (error) { console.log(`[Auth] Signup error: ${error.message}`); return c.json({ error: error.message }, 400); }
+    console.log(`[Auth] User created: ${data.user?.id}`);
+    return c.json({ data: { userId: data.user?.id, email } }, 201);
+  } catch (err) { console.log(`[Auth] Signup exception: ${err}`); return c.json({ error: `שגיאה ביצירת חשבון: ${err}` }, 500); }
+});
+
+// ─── SEED ─────────────────────────────────────────
+app.post(`${PREFIX}/seed`, async (c) => {
+  try {
+    const alreadySeeded = await kv.get("_meta:seeded_v2");
+    if (alreadySeeded) return c.json({ data: { skipped: true } });
+
+    await kv.mset(SEED_SUPPLIERS.map(s => `supplier:${s.id}`), SEED_SUPPLIERS);
+    await kv.mset(SEED_PROJECTS.map(p => `project:${p.id}`), SEED_PROJECTS);
+    await kv.mset(SEED_QUOTE_ITEMS.map(q => `quote_item:${q.id}`), SEED_QUOTE_ITEMS);
+    await kv.mset(SEED_TIMELINE_EVENTS.map(t => `timeline_event:${t.id}`), SEED_TIMELINE_EVENTS);
+    await kv.mset(SEED_SUPPLIER_CONTACTS.map(c => `supplier_contact:${c.id}`), SEED_SUPPLIER_CONTACTS);
+    await kv.mset(SEED_SUPPLIER_PRODUCTS.map(p => `supplier_product:${p.id}`), SEED_SUPPLIER_PRODUCTS);
+    await kv.mset(SEED_SUPPLIER_DOCUMENTS.map(d => `supplier_document:${d.id}`), SEED_SUPPLIER_DOCUMENTS);
+    await kv.set("_meta:seeded_v2", { seededAt: new Date().toISOString() });
+
+    console.log("[Seed] All data seeded");
+    return c.json({ data: { skipped: false, suppliers: SEED_SUPPLIERS.length, projects: SEED_PROJECTS.length } });
+  } catch (err) { console.log(`[Seed] Error: ${err}`); return c.json({ error: `Seed failed: ${err}` }, 500); }
+});
+
+// ─── SUPPLIERS CRUD ──────────────────────────────
+app.get(`${PREFIX}/suppliers`, async (c) => {
+  try { return c.json({ data: await kv.getByPrefix("supplier:") }); }
+  catch (err) { return c.json({ error: `Failed to list suppliers: ${err}` }, 500); }
+});
+
+app.get(`${PREFIX}/suppliers/:id`, async (c) => {
+  try {
+    const supplier = await kv.get(`supplier:${c.req.param("id")}`);
+    if (!supplier) return c.json({ error: "Supplier not found" }, 404);
+    return c.json({ data: supplier });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.post(`${PREFIX}/suppliers`, async (c) => {
+  try {
+    const body = await c.req.json();
+    const id = body.id || generateId();
+    const supplier = { id, name: body.name || "", phone: body.phone || "", category: body.category || "", categoryColor: body.categoryColor || CATEGORY_COLORS[body.category] || "#8d785e", region: body.region || "", rating: body.rating ?? 0, verificationStatus: body.verificationStatus || "unverified", notes: body.notes || "-", icon: body.icon || CATEGORY_ICONS[body.category] || "📦" };
+    await kv.set(`supplier:${id}`, supplier);
+    return c.json({ data: supplier }, 201);
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.put(`${PREFIX}/suppliers/:id`, async (c) => {
+  try {
+    const id = c.req.param("id");
+    const existing = await kv.get(`supplier:${id}`);
+    if (!existing) return c.json({ error: "Not found" }, 404);
+    const body = await c.req.json();
+    const updated = { ...existing, ...body, id };
+    if (body.category && body.category !== existing.category) {
+      if (!body.categoryColor) updated.categoryColor = CATEGORY_COLORS[body.category] || existing.categoryColor;
+      if (!body.icon) updated.icon = CATEGORY_ICONS[body.category] || existing.icon;
+    }
+    await kv.set(`supplier:${id}`, updated);
+    return c.json({ data: updated });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.delete(`${PREFIX}/suppliers/:id`, async (c) => {
+  try {
+    const id = c.req.param("id");
+    if (!(await kv.get(`supplier:${id}`))) return c.json({ error: "Not found" }, 404);
+    await kv.del(`supplier:${id}`);
+    return c.json({ data: { success: true, id } });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+// ─── SUPPLIER CONTACTS ───────────────────────────
+app.get(`${PREFIX}/suppliers/:supplierId/contacts`, async (c) => {
+  try {
+    const supplierId = c.req.param("supplierId");
+    const all = await kv.getByPrefix("supplier_contact:");
+    return c.json({ data: all.filter((x: any) => x.supplierId === supplierId) });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.post(`${PREFIX}/suppliers/:supplierId/contacts`, async (c) => {
+  try {
+    const supplierId = c.req.param("supplierId");
+    const body = await c.req.json();
+    const id = body.id || `sc-${generateId()}`;
+    const contact = { id, supplierId, name: body.name || "", role: body.role || "", phone: body.phone || "", email: body.email || "", primary: body.primary ?? false };
+    await kv.set(`supplier_contact:${id}`, contact);
+    return c.json({ data: contact }, 201);
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.delete(`${PREFIX}/suppliers/:supplierId/contacts/:contactId`, async (c) => {
+  try {
+    const contactId = c.req.param("contactId");
+    if (!(await kv.get(`supplier_contact:${contactId}`))) return c.json({ error: "Not found" }, 404);
+    await kv.del(`supplier_contact:${contactId}`);
+    return c.json({ data: { success: true, id: contactId } });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+// ─── SUPPLIER PRODUCTS ───────────────────────────
+app.get(`${PREFIX}/suppliers/:supplierId/products`, async (c) => {
+  try {
+    const supplierId = c.req.param("supplierId");
+    const all = await kv.getByPrefix("supplier_product:");
+    return c.json({ data: all.filter((x: any) => x.supplierId === supplierId) });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.post(`${PREFIX}/suppliers/:supplierId/products`, async (c) => {
+  try {
+    const supplierId = c.req.param("supplierId");
+    const body = await c.req.json();
+    const id = body.id || `sp-${generateId()}`;
+    const product = { id, supplierId, name: body.name || "", price: body.price ?? 0, description: body.description || "", unit: body.unit || "אדם" };
+    await kv.set(`supplier_product:${id}`, product);
+    return c.json({ data: product }, 201);
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.delete(`${PREFIX}/suppliers/:supplierId/products/:productId`, async (c) => {
+  try {
+    const productId = c.req.param("productId");
+    if (!(await kv.get(`supplier_product:${productId}`))) return c.json({ error: "Not found" }, 404);
+    await kv.del(`supplier_product:${productId}`);
+    return c.json({ data: { success: true, id: productId } });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+// ─── SUPPLIER DOCUMENTS ──────────────────────────
+app.get(`${PREFIX}/suppliers/:supplierId/documents`, async (c) => {
+  try {
+    const supplierId = c.req.param("supplierId");
+    const all = await kv.getByPrefix("supplier_document:");
+    return c.json({ data: all.filter((x: any) => x.supplierId === supplierId) });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.post(`${PREFIX}/suppliers/:supplierId/documents`, async (c) => {
+  try {
+    const supplierId = c.req.param("supplierId");
+    const body = await c.req.json();
+    const id = body.id || `sd-${generateId()}`;
+    const doc = { id, supplierId, name: body.name || "", expiry: body.expiry || "", status: body.status || "valid" };
+    await kv.set(`supplier_document:${id}`, doc);
+    return c.json({ data: doc }, 201);
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.put(`${PREFIX}/suppliers/:supplierId/documents/:docId`, async (c) => {
+  try {
+    const docId = c.req.param("docId");
+    const existing = await kv.get(`supplier_document:${docId}`);
+    if (!existing) return c.json({ error: "Not found" }, 404);
+    const body = await c.req.json();
+    const updated = { ...existing, ...body, id: docId, supplierId: c.req.param("supplierId") };
+    await kv.set(`supplier_document:${docId}`, updated);
+    return c.json({ data: updated });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.delete(`${PREFIX}/suppliers/:supplierId/documents/:docId`, async (c) => {
+  try {
+    const docId = c.req.param("docId");
+    if (!(await kv.get(`supplier_document:${docId}`))) return c.json({ error: "Not found" }, 404);
+    await kv.del(`supplier_document:${docId}`);
+    return c.json({ data: { success: true, id: docId } });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+// ─── PROJECTS CRUD ───────────────────────────────
+app.get(`${PREFIX}/projects`, async (c) => {
+  try { return c.json({ data: await kv.getByPrefix("project:") }); }
+  catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.get(`${PREFIX}/projects/:id`, async (c) => {
+  try {
+    const project = await kv.get(`project:${c.req.param("id")}`);
+    if (!project) return c.json({ error: "Not found" }, 404);
+    return c.json({ data: project });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.post(`${PREFIX}/projects`, async (c) => {
+  try {
+    const body = await c.req.json();
+    const year = new Date().getFullYear().toString().slice(2);
+    const seq = Math.floor(1000 + Math.random() * 9000);
+    const id = body.id || `${seq}-${year}`;
+    const project = { id, name: body.name || "", client: body.client || body.company || "", company: body.company || body.client || "", participants: body.participants ?? 0, region: body.region || "", status: body.status || "ליד חדש", statusColor: body.statusColor || STATUS_COLORS[body.status || "ליד חדש"] || "#3b82f6", totalPrice: body.totalPrice ?? 0, pricePerPerson: body.pricePerPerson ?? 0, profitMargin: body.profitMargin ?? 0, date: body.date || new Date().toISOString().split("T")[0] };
+    await kv.set(`project:${id}`, project);
+    return c.json({ data: project }, 201);
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.put(`${PREFIX}/projects/:id`, async (c) => {
+  try {
+    const id = c.req.param("id");
+    const existing = await kv.get(`project:${id}`);
+    if (!existing) return c.json({ error: "Not found" }, 404);
+    const body = await c.req.json();
+    const updated = { ...existing, ...body, id };
+    if (body.status && body.status !== existing.status && !body.statusColor) {
+      updated.statusColor = STATUS_COLORS[body.status] || existing.statusColor;
+    }
+    await kv.set(`project:${id}`, updated);
+    return c.json({ data: updated });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.delete(`${PREFIX}/projects/:id`, async (c) => {
+  try {
+    const id = c.req.param("id");
+    if (!(await kv.get(`project:${id}`))) return c.json({ error: "Not found" }, 404);
+    await kv.del(`project:${id}`);
+    return c.json({ data: { success: true, id } });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+// ─── QUOTE ITEMS ─────────────────────────────────
+app.get(`${PREFIX}/projects/:projectId/items`, async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    const all = await kv.getByPrefix("quote_item:");
+    return c.json({ data: all.filter((qi: any) => qi.projectId === projectId) });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.post(`${PREFIX}/projects/:projectId/items`, async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    const body = await c.req.json();
+    const id = body.id || `qi-${generateId()}`;
+    const item = { id, projectId, type: body.type || "", icon: body.icon || "📦", name: body.name || "", supplier: body.supplier || "", description: body.description || "", cost: body.cost ?? 0, sellingPrice: body.sellingPrice ?? 0, profitWeight: body.profitWeight ?? 3, status: body.status || "pending", alternatives: body.alternatives || [] };
+    await kv.set(`quote_item:${id}`, item);
+    return c.json({ data: item }, 201);
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.put(`${PREFIX}/projects/:projectId/items/:itemId`, async (c) => {
+  try {
+    const itemId = c.req.param("itemId");
+    const existing = await kv.get(`quote_item:${itemId}`);
+    if (!existing) return c.json({ error: "Not found" }, 404);
+    const body = await c.req.json();
+    const updated = { ...existing, ...body, id: itemId, projectId: c.req.param("projectId") };
+    await kv.set(`quote_item:${itemId}`, updated);
+    return c.json({ data: updated });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.delete(`${PREFIX}/projects/:projectId/items/:itemId`, async (c) => {
+  try {
+    const itemId = c.req.param("itemId");
+    if (!(await kv.get(`quote_item:${itemId}`))) return c.json({ error: "Not found" }, 404);
+    await kv.del(`quote_item:${itemId}`);
+    return c.json({ data: { success: true, id: itemId } });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+// ─── TIMELINE EVENTS ─────────────────────────────
+app.get(`${PREFIX}/projects/:projectId/timeline`, async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    const all = await kv.getByPrefix("timeline_event:");
+    const events = all.filter((te: any) => te.projectId === projectId);
+    events.sort((a: any, b: any) => (a.time || "").localeCompare(b.time || ""));
+    return c.json({ data: events });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.post(`${PREFIX}/projects/:projectId/timeline`, async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    const body = await c.req.json();
+    const id = body.id || `te-${generateId()}`;
+    const event = { id, projectId, time: body.time || "", title: body.title || "", description: body.description || "", icon: body.icon || "📌" };
+    await kv.set(`timeline_event:${id}`, event);
+    return c.json({ data: event }, 201);
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.delete(`${PREFIX}/projects/:projectId/timeline/:eventId`, async (c) => {
+  try {
+    const eventId = c.req.param("eventId");
+    if (!(await kv.get(`timeline_event:${eventId}`))) return c.json({ error: "Not found" }, 404);
+    await kv.del(`timeline_event:${eventId}`);
+    return c.json({ data: { success: true, id: eventId } });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+// ─── DASHBOARD STATS ─────────────────────────────
+app.get(`${PREFIX}/dashboard/stats`, async (c) => {
+  try {
+    const [suppliersList, projectsList] = await Promise.all([kv.getByPrefix("supplier:"), kv.getByPrefix("project:")]);
+    const supplierStats = { total: suppliersList.length, verified: suppliersList.filter((s: any) => s.verificationStatus === "verified").length, pending: suppliersList.filter((s: any) => s.verificationStatus === "pending").length, unverified: suppliersList.filter((s: any) => s.verificationStatus === "unverified").length };
+    const projectStats = { total: projectsList.length, leads: projectsList.filter((p: any) => p.status === "ליד חדש").length, building: projectsList.filter((p: any) => p.status === "בניית הצעה").length, quotesSent: projectsList.filter((p: any) => p.status === "הצעה נשלחה").length, approved: projectsList.filter((p: any) => p.status === "אושר").length, pricing: projectsList.filter((p: any) => p.status === "מחיר בהערכה").length, inProgress: projectsList.filter((p: any) => p.status === "בביצוע").length };
+    const totalRevenue = projectsList.reduce((sum: number, p: any) => sum + (p.totalPrice || 0), 0);
+    const projectsWithMargin = projectsList.filter((p: any) => p.profitMargin > 0);
+    const avgMargin = projectsWithMargin.length > 0 ? Math.round(projectsWithMargin.reduce((sum: number, p: any) => sum + p.profitMargin, 0) / projectsWithMargin.length) : 0;
+    return c.json({ data: { suppliers: supplierStats, projects: projectStats, revenue: { total: totalRevenue, avgMargin } } });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+// ─── PUBLIC CLIENT QUOTE ─────────────────────────
+app.get(`${PREFIX}/public/quote/:id`, async (c) => {
+  try {
+    const id = c.req.param("id");
+    const project = await kv.get(`project:${id}`);
+    if (!project) return c.json({ error: "Not found" }, 404);
+    const allItems = await kv.getByPrefix("quote_item:");
+    const items = allItems.filter((qi: any) => qi.projectId === id).map((qi: any) => ({ type: qi.type, icon: qi.icon, name: qi.name, supplier: qi.supplier, description: qi.description, sellingPrice: qi.sellingPrice }));
+    const allEvents = await kv.getByPrefix("timeline_event:");
+    const timeline = allEvents.filter((te: any) => te.projectId === id).sort((a: any, b: any) => (a.time || "").localeCompare(b.time || ""));
+    return c.json({ data: { name: project.name, company: project.company || project.client, participants: project.participants, region: project.region, totalPrice: project.totalPrice, pricePerPerson: project.pricePerPerson, items, timeline } });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+// ─── PUBLIC CLIENT APPROVAL ──────────────────────
+app.post(`${PREFIX}/public/quote/:id/approve`, async (c) => {
+  try {
+    const id = c.req.param("id");
+    const project = await kv.get(`project:${id}`);
+    if (!project) return c.json({ error: "Not found" }, 404);
+    const updated = { ...project, status: "אושר", statusColor: "#22c55e" };
+    await kv.set(`project:${id}`, updated);
+    console.log(`[Public] Client approved project ${id}`);
+    return c.json({ data: { success: true } });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+Deno.serve(app.fetch);

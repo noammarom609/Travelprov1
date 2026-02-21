@@ -1,15 +1,34 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { useForm } from 'react-hook-form';
 import {
   ArrowRight, Eye, CheckSquare, FileText, Star, Plus,
-  Bus, Target, Globe, Edit2
+  Trash2, Loader2, Save, Download
 } from 'lucide-react';
-import { ImageWithFallback } from './figma/ImageWithFallback';
+import { FormField, rules } from './FormField';
+import { SupplierSearch } from './SupplierSearch';
 import { appToast } from './AppToast';
+import { projectsApi, quoteItemsApi, timelineApi } from './api';
+import type { QuoteItem, TimelineEvent } from './api';
+import type { Project } from './data';
 
 const KAYAK_IMG = 'https://images.unsplash.com/photo-1550515710-9324b8e4262e?w=800';
 const BUS_IMG = 'https://images.unsplash.com/photo-1765739099920-81a456008253?w=800';
-const VINEYARD_IMG = 'https://images.unsplash.com/photo-1762330465953-75478d918896?w=800';
+
+const COMPONENT_TYPES = [
+  { icon: '🚌', label: 'תחבורה', type: 'תחבורה' },
+  { icon: '🏨', label: 'לינה', type: 'לינה' },
+  { icon: '🎯', label: 'פעילות', type: 'פעילות' },
+  { icon: '🍽️', label: 'ארוחה', type: 'ארוחה' },
+  { icon: '🎤', label: 'בידור', type: 'בידור' },
+  { icon: '📦', label: 'אחר', type: 'אחר' },
+];
+
+const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+  approved: { label: '✓ מאושר', color: '#16a34a', bg: '#f0fdf4' },
+  modified: { label: '♦ שונה', color: '#ff8c00', bg: 'rgba(255,140,0,0.1)' },
+  pending: { label: '● ממתין', color: '#8b5cf6', bg: '#f5f3ff' },
+};
 
 const tabs = [
   { id: 'components', label: 'רכיבים וספקים' },
@@ -17,37 +36,179 @@ const tabs = [
   { id: 'timeline', label: 'לו"ז הפעילות' },
 ];
 
+interface AddItemForm {
+  type: string;
+  name: string;
+  supplier: string;
+  description: string;
+  cost: string;
+  sellingPrice: string;
+}
+
 export function QuoteEditor() {
   const navigate = useNavigate();
   const { id } = useParams();
   const [activeTab, setActiveTab] = useState('components');
-  const [profitWeights, setProfitWeights] = useState({ transport: 2, activity: 4 });
-  const [selectedAlternative, setSelectedAlternative] = useState('a1');
+
+  // Data from API
+  const [project, setProject] = useState<Project | null>(null);
+  const [items, setItems] = useState<QuoteItem[]>([]);
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // UI state
   const [showPreview, setShowPreview] = useState(false);
   const [showAddComponent, setShowAddComponent] = useState(false);
-  const [showAddSupplier, setShowAddSupplier] = useState(false);
-  const [supplierSearch, setSupplierSearch] = useState('');
+  const [showAddForm, setShowAddForm] = useState<string | null>(null); // type being added
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
 
-  const transportCost = 7500;
-  const activityBaseCost = 28800;
+  // Add item form
+  const addForm = useForm<AddItemForm>({
+    mode: 'onChange',
+    defaultValues: { type: '', name: '', supplier: '', description: '', cost: '', sellingPrice: '' },
+  });
 
+  // ─── Load data ───
+  const loadData = useCallback(async () => {
+    if (!id) return;
+    try {
+      setLoading(true);
+      const [proj, qi, tl] = await Promise.all([
+        projectsApi.get(id),
+        quoteItemsApi.list(id),
+        timelineApi.list(id),
+      ]);
+      setProject(proj);
+      setItems(qi);
+      setTimeline(tl);
+    } catch (err) {
+      console.error('[QuoteEditor] Failed to load:', err);
+      appToast.error('שגיאה בטעינה', 'לא ניתן לטעון את נתוני הפרויקט');
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  // ─── Compute pricing from items ───
   const getSellingPrice = (cost: number, weight: number) => {
     const margin = 0.05 + (weight * 0.05);
     return Math.round(cost * (1 + margin));
   };
 
-  const transportSelling = getSellingPrice(transportCost, profitWeights.transport);
-  const activitySelling = getSellingPrice(activityBaseCost, profitWeights.activity);
-  const totalCost = transportCost + activityBaseCost;
-  const totalSelling = transportSelling + activitySelling;
+  const totalCost = items.reduce((sum, item) => sum + (item.cost || 0), 0);
+  const totalSelling = items.reduce((sum, item) => sum + (item.sellingPrice || 0), 0);
   const totalProfit = totalSelling - totalCost;
-  const profitPercent = Math.round((totalProfit / totalSelling) * 100);
+  const profitPercent = totalSelling > 0 ? Math.round((totalProfit / totalSelling) * 100) : 0;
+  const participants = project?.participants || 1;
+  const pricePerPerson = Math.round(totalSelling / participants);
 
-  const timeline = [
-    { time: '08:00', title: 'יציאה ואיסוף', desc: 'נקודת מפגש: חניון הבימה מיני גלילות. חלוקת ערכות בוקר.', icon: '🚌' },
-    { time: '10:30', title: 'פעילות בוקר - רייזרים', desc: 'הגעה למתחם רייזרים בגוף. מדריך בטיחות ויציאה למסלול!', icon: '🎯' },
-    { time: '13:00', title: 'ארוחת צהריים', desc: 'ארוחת בשרים כשרה למהדרין במסעדת "החווה".', icon: '🍽️' },
-  ];
+  // ─── Update profit weight ───
+  const updateProfitWeight = async (item: QuoteItem, newWeight: number) => {
+    if (!id) return;
+    const newSelling = getSellingPrice(item.cost, newWeight);
+    try {
+      const updated = await quoteItemsApi.update(id, item.id, {
+        profitWeight: newWeight,
+        sellingPrice: newSelling,
+      });
+      setItems(prev => prev.map(i => i.id === item.id ? updated : i));
+    } catch (err) {
+      console.error('[QuoteEditor] Failed to update weight:', err);
+      appToast.error('שגיאה', 'לא ניתן לעדכן את משקל הרווח');
+    }
+  };
+
+  // ─── Add component ───
+  const onAddItem = async (data: AddItemForm) => {
+    if (!id || !showAddForm) return;
+    try {
+      setSaving(true);
+      const typeInfo = COMPONENT_TYPES.find(c => c.type === showAddForm);
+      const cost = parseFloat(data.cost) || 0;
+      const sellingPrice = parseFloat(data.sellingPrice) || getSellingPrice(cost, 3);
+      const newItem = await quoteItemsApi.create(id, {
+        type: showAddForm,
+        icon: typeInfo?.icon || '📦',
+        name: data.name.trim(),
+        supplier: data.supplier.trim(),
+        description: data.description.trim(),
+        cost,
+        sellingPrice,
+        profitWeight: 3,
+        status: 'pending',
+      });
+      setItems(prev => [...prev, newItem]);
+      setShowAddForm(null);
+      setShowAddComponent(false);
+      addForm.reset();
+      appToast.success('רכיב נוסף', `${data.name} נוסף להצעה`);
+    } catch (err) {
+      console.error('[QuoteEditor] Failed to add item:', err);
+      appToast.error('שגיאה', 'לא ניתן להוסיף את הרכיב');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ─── Delete item ───
+  const deleteItem = async (itemId: string) => {
+    if (!id) return;
+    try {
+      setDeletingItemId(itemId);
+      await quoteItemsApi.delete(id, itemId);
+      setItems(prev => prev.filter(i => i.id !== itemId));
+      appToast.success('רכיב הוסר', 'הרכיב הוסר מההצעה');
+    } catch (err) {
+      console.error('[QuoteEditor] Failed to delete item:', err);
+      appToast.error('שגיאה', 'לא ניתן למחוק את הרכיב');
+    } finally {
+      setDeletingItemId(null);
+    }
+  };
+
+  // ─── Save draft (update project totals) ───
+  const saveDraft = async () => {
+    if (!id || !project) return;
+    try {
+      setSaving(true);
+      const margin = totalSelling > 0 ? Math.round((totalProfit / totalSelling) * 100) : 0;
+      await projectsApi.update(id, {
+        totalPrice: totalSelling,
+        pricePerPerson,
+        profitMargin: margin,
+      });
+      appToast.success('הטיוטה נשמרה', 'מחירים ורווח עודכנו בפרויקט');
+    } catch (err) {
+      console.error('[QuoteEditor] Failed to save draft:', err);
+      appToast.error('שגיאה', 'לא ניתן לשמור את הטיוטה');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ─── Loading state ───
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32">
+        <Loader2 size={32} className="animate-spin text-[#ff8c00] mb-3" />
+        <p className="text-[14px] text-[#8d785e]">טוען נתוני הצעה...</p>
+      </div>
+    );
+  }
+
+  if (!project) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32">
+        <p className="text-[18px] text-[#8d785e] mb-4">פרויקט לא נמצא</p>
+        <button onClick={() => navigate('/projects')} className="text-[#ff8c00] hover:underline">
+          חזרה לרשימת הפרויקטים
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 lg:p-6 mx-auto font-['Assistant',sans-serif]" dir="rtl">
@@ -58,8 +219,8 @@ export function QuoteEditor() {
             <ArrowRight size={20} />
           </button>
           <div>
-            <h1 className="text-[22px] text-[#181510]" style={{ fontWeight: 700 }}>פרויקט: נופש שנתי גליל עליון</h1>
-            <p className="text-[12px] text-[#8d785e]">מזהה פרויקט: #{id} &bull; 24</p>
+            <h1 className="text-[22px] text-[#181510]" style={{ fontWeight: 700 }}>פרויקט: {project.name}</h1>
+            <p className="text-[12px] text-[#8d785e]">מזהה פרויקט: #{id} &bull; {project.company}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -71,8 +232,15 @@ export function QuoteEditor() {
             תצוגה מקדימה ללקוח
           </button>
           <button
-            onClick={() => appToast.success('בדיקה הושלמה', 'ההצעה תקינה ומוכנה לשליחה ללקוח')}
-            className="flex items-center gap-2 text-[13px] text-[#6b5d45] border border-[#e7e1da] px-3 py-2 rounded-lg hover:bg-[#f5f3f0] transition-colors">
+            onClick={() => {
+              if (items.length === 0) {
+                appToast.warning('אין רכיבים', 'הוסף לפחות רכיב אחד להצעה');
+              } else {
+                appToast.success('בדיקה הושלמה', 'ההצעה תקינה ומוכנה לשליחה ללקוח');
+              }
+            }}
+            className="flex items-center gap-2 text-[13px] text-[#6b5d45] border border-[#e7e1da] px-3 py-2 rounded-lg hover:bg-[#f5f3f0] transition-colors"
+          >
             <CheckSquare size={15} />
             בדיקה לפני שליחה
           </button>
@@ -90,10 +258,10 @@ export function QuoteEditor() {
       {/* Project info cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         {[
-          { label: 'סטטוס', value: 'בניית הצעה', color: '#ff8c00' },
-          { label: 'חברה', value: 'סייבר-גלובל', icon: '🏢' },
-          { label: 'משתתפים', value: '120 איש', icon: '👥' },
-          { label: 'אזור', value: 'גליל עליון', icon: '📍' },
+          { label: 'סטטוס', value: project.status, color: project.statusColor },
+          { label: 'חברה', value: project.company, icon: '🏢' },
+          { label: 'משתתפים', value: `${project.participants} איש`, icon: '👥' },
+          { label: 'אזור', value: project.region, icon: '📍' },
         ].map((card) => (
           <div key={card.label} className="bg-white rounded-xl p-3.5 border border-[#e7e1da] text-center">
             <div className="text-[11px] text-[#8d785e] mb-1">{card.icon} {card.label}</div>
@@ -107,7 +275,7 @@ export function QuoteEditor() {
         <div className="flex items-center gap-6">
           <div className="text-center">
             <div className="text-[11px] text-[#c4b89a]">מחיר לאדם</div>
-            <div className="text-[22px] text-white" style={{ fontWeight: 700 }}>₪{Math.round(totalSelling / 120)}</div>
+            <div className="text-[22px] text-white" style={{ fontWeight: 700 }}>₪{pricePerPerson.toLocaleString()}</div>
           </div>
           <div className="w-px h-10 bg-white/20" />
           <div className="text-center">
@@ -135,19 +303,19 @@ export function QuoteEditor() {
                 ? 'bg-white text-[#181510] shadow-sm'
                 : 'text-[#8d785e] hover:text-[#181510]'
             }`}
-            style={{ fontWeight: activeTab === tab.id ? 700 : 700 }}
+            style={{ fontWeight: 700 }}
           >
             {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Components Tab */}
+      {/* ═══ Components Tab ═══ */}
       {activeTab === 'components' && (
         <div className="space-y-5">
           <div className="flex items-center justify-between">
             <h2 className="text-[18px] text-[#181510] flex items-center gap-2" style={{ fontWeight: 700 }}>
-              📦 רכיבים וספקים
+              📦 רכיבים וספקים ({items.length})
             </h2>
             <button
               onClick={() => setShowAddComponent(true)}
@@ -159,93 +327,89 @@ export function QuoteEditor() {
             </button>
           </div>
 
-          {/* Transport */}
-          <div className="bg-white rounded-xl border border-[#e7e1da] overflow-hidden">
-            <div className="flex items-center justify-between p-4 bg-[#f5f3f0] border-b border-[#e7e1da]">
-              <div className="flex items-center gap-2">
-                <Bus size={16} className="text-[#8d785e]" />
-                <span className="text-[15px] text-[#181510]" style={{ fontWeight: 600 }}>תחבורה</span>
-              </div>
-              <span className="text-[11px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full" style={{ fontWeight: 600 }}>✓ מאושר</span>
+          {items.length === 0 && (
+            <div className="text-center py-12 bg-white rounded-xl border border-[#e7e1da]">
+              <div className="text-[40px] mb-3">📦</div>
+              <p className="text-[16px] text-[#8d785e] mb-2">אין רכיבים בהצעה</p>
+              <p className="text-[13px] text-[#b8a990]">הוסף רכיבים כמו תחבורה, פעילויות, ארוחות ועוד</p>
             </div>
-            <div className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-[#ff8c00]/10 rounded-lg flex items-center justify-center text-[18px]">🚌</div>
-                  <div>
-                    <div className="text-[15px] text-[#181510]" style={{ fontWeight: 600 }}>אוטובוסים הגליל</div>
-                    <div className="text-[12px] text-[#8d785e]">3 אוטובוסים ממוגנים, איסוף מהמרכז</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <button className="text-[#8d785e] hover:text-[#ff8c00] transition-colors"><Edit2 size={15} /></button>
-                  <div className="text-left">
-                    <div className="text-[11px] text-[#8d785e]">עלות</div>
-                    <div className="text-[16px] text-[#181510]" style={{ fontWeight: 700 }}>₪{transportCost.toLocaleString()}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          )}
 
-          {/* Activity */}
-          <div className="bg-white rounded-xl border border-[#e7e1da] overflow-hidden">
-            <div className="flex items-center justify-between p-4 bg-[#f5f3f0] border-b border-[#e7e1da]">
-              <div className="flex items-center gap-2">
-                <Target size={16} className="text-[#8d785e]" />
-                <span className="text-[15px] text-[#181510]" style={{ fontWeight: 600 }}>פעילות בוקר</span>
-              </div>
-              <span className="text-[11px] text-[#ff8c00] bg-[#ff8c00]/10 px-2 py-0.5 rounded-full" style={{ fontWeight: 600 }}>♦ שונתה</span>
-            </div>
-            <div className="p-4">
-              <div className="text-[13px] text-[#8d785e] mb-3">חלופות לבחירה:</div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {[
-                  { id: 'a1', name: 'רייזרס בגוף', desc: 'מתחם ג׳ונגל/רייזרים', cost: 240, img: KAYAK_IMG, badge: 'מומלץ' },
-                  { id: 'a2', name: 'קייקי הגליל', desc: 'מתחם פעילות/רייזרים', cost: 110, img: BUS_IMG },
-                  { id: 'a3', name: 'ספק מהאינטרנט', desc: 'מתחם ביער/בגוף', cost: 180, img: null },
-                ].map((alt) => (
-                  <button
-                    key={alt.id}
-                    onClick={() => setSelectedAlternative(alt.id)}
-                    className={`relative rounded-xl border-2 overflow-hidden transition-all text-right ${
-                      selectedAlternative === alt.id
-                        ? 'border-[#ff8c00] shadow-lg shadow-[#ff8c00]/15'
-                        : 'border-[#e7e1da] hover:border-[#d4cdc3]'
-                    }`}
-                  >
-                    {alt.badge && (
-                      <span className="absolute top-2 right-2 z-10 text-[10px] bg-[#ff8c00] text-white px-2 py-0.5 rounded-full" style={{ fontWeight: 600 }}>{alt.badge}</span>
-                    )}
-                    <div className="h-20 bg-[#f5f3f0] overflow-hidden">
-                      {alt.img ? (
-                        <ImageWithFallback src={alt.img} alt={alt.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center"><Globe size={24} className="text-[#c4b89a]" /></div>
-                      )}
-                    </div>
-                    <div className="p-3">
-                      <div className="text-[13px] text-[#181510]" style={{ fontWeight: 600 }}>{alt.name}</div>
-                      <div className="text-[11px] text-[#8d785e]">{alt.desc}</div>
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="text-[11px] text-[#8d785e]">עלות לאדם</span>
-                        <span className="text-[14px] text-[#181510]" style={{ fontWeight: 700 }}>₪{alt.cost}</span>
+          {items.map(item => {
+            const statusInfo = STATUS_LABELS[item.status] || STATUS_LABELS.pending;
+            return (
+              <div key={item.id} className="bg-white rounded-xl border border-[#e7e1da] overflow-hidden">
+                <div className="flex items-center justify-between p-4 bg-[#f5f3f0] border-b border-[#e7e1da]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[16px]">{item.icon}</span>
+                    <span className="text-[15px] text-[#181510]" style={{ fontWeight: 600 }}>{item.type}</span>
+                  </div>
+                  <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ backgroundColor: statusInfo.bg, color: statusInfo.color, fontWeight: 600 }}>
+                    {statusInfo.label}
+                  </span>
+                </div>
+                <div className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-[#ff8c00]/10 rounded-lg flex items-center justify-center text-[18px]">{item.icon}</div>
+                      <div>
+                        <div className="text-[15px] text-[#181510]" style={{ fontWeight: 600 }}>{item.name || item.supplier}</div>
+                        <div className="text-[12px] text-[#8d785e]">{item.description}</div>
                       </div>
                     </div>
-                    {selectedAlternative === alt.id && (
-                      <div className="absolute top-2 left-2 w-5 h-5 bg-[#ff8c00] rounded-full flex items-center justify-center">
-                        <span className="text-white text-[12px]">✓</span>
+                    <div className="flex items-center gap-4">
+                      <button
+                        onClick={() => deleteItem(item.id)}
+                        disabled={deletingItemId === item.id}
+                        className="text-[#8d785e] hover:text-red-500 transition-colors disabled:opacity-50"
+                      >
+                        {deletingItemId === item.id ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                      </button>
+                      <div className="text-left">
+                        <div className="text-[11px] text-[#8d785e]">עלות</div>
+                        <div className="text-[16px] text-[#181510]" style={{ fontWeight: 700 }}>₪{item.cost.toLocaleString()}</div>
                       </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+                    </div>
+                  </div>
 
-          {/* Inline supplier search */}
+                  {/* Alternatives if present */}
+                  {item.alternatives && item.alternatives.length > 0 && (
+                    <div className="mt-4 pt-3 border-t border-[#f5f3f0]">
+                      <div className="text-[13px] text-[#8d785e] mb-3">חלופות לבחירה:</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {item.alternatives.map(alt => (
+                          <div
+                            key={alt.id}
+                            className={`relative rounded-xl border-2 p-3 transition-all ${
+                              alt.selected
+                                ? 'border-[#ff8c00] bg-[#ff8c00]/5'
+                                : 'border-[#e7e1da]'
+                            }`}
+                          >
+                            <div className="text-[13px] text-[#181510]" style={{ fontWeight: 600 }}>{alt.name}</div>
+                            <div className="text-[11px] text-[#8d785e]">{alt.description}</div>
+                            <div className="flex items-center justify-between mt-2">
+                              <span className="text-[11px] text-[#8d785e]">עלות לאדם</span>
+                              <span className="text-[14px] text-[#181510]" style={{ fontWeight: 700 }}>₪{alt.costPerPerson}</span>
+                            </div>
+                            {alt.selected && (
+                              <div className="absolute top-2 left-2 w-5 h-5 bg-[#ff8c00] rounded-full flex items-center justify-center">
+                                <span className="text-white text-[12px]">✓</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Dashed add button */}
           <button
-            onClick={() => setShowAddSupplier(true)}
+            onClick={() => setShowAddComponent(true)}
             className="w-full border-2 border-dashed border-[#e7e1da] rounded-xl p-4 text-[#8d785e] hover:border-[#ff8c00] hover:text-[#ff8c00] transition-all flex items-center justify-center gap-2"
           >
             <Plus size={16} />
@@ -254,121 +418,147 @@ export function QuoteEditor() {
         </div>
       )}
 
-      {/* Pricing Tab */}
+      {/* ═══ Pricing Tab ═══ */}
       {activeTab === 'pricing' && (
         <div className="space-y-5">
           <h2 className="text-[18px] text-[#181510] flex items-center gap-2" style={{ fontWeight: 700 }}>
             💰 תמחור ורווח יעד
           </h2>
 
-          <div className="bg-white rounded-xl border border-[#e7e1da] overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-[#f5f3f0] border-b border-[#e7e1da] text-[12px] text-[#8d785e]">
-                  <th className="p-3 text-right" style={{ fontWeight: 600 }}>רכיב</th>
-                  <th className="p-3 text-right" style={{ fontWeight: 600 }}>עלות (ספק)</th>
-                  <th className="p-3 text-right" style={{ fontWeight: 600 }}>מחיר מכירה</th>
-                  <th className="p-3 text-right" style={{ fontWeight: 600 }}>רווח</th>
-                  <th className="p-3 text-right" style={{ fontWeight: 600 }}>משקל רווח</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-[#e7e1da]">
-                  <td className="p-3 text-[14px]" style={{ fontWeight: 500 }}>תחבורה</td>
-                  <td className="p-3 text-[14px] text-[#6b5d45]">₪{transportCost.toLocaleString()}</td>
-                  <td className="p-3 text-[14px]" style={{ fontWeight: 600 }}>₪{transportSelling.toLocaleString()}</td>
-                  <td className="p-3 text-[14px] text-green-600" style={{ fontWeight: 600 }}>₪{(transportSelling - transportCost).toLocaleString()}</td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((w) => (
-                        <button
-                          key={w}
-                          onClick={() => setProfitWeights(p => ({ ...p, transport: w }))}
-                          className="transition-colors"
-                        >
-                          <Star size={16} fill={w <= profitWeights.transport ? '#ff8c00' : 'none'} className={w <= profitWeights.transport ? 'text-[#ff8c00]' : 'text-[#ddd6cb]'} />
-                        </button>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-                <tr className="border-b border-[#e7e1da]">
-                  <td className="p-3 text-[14px]" style={{ fontWeight: 500 }}>פעילות בוקר</td>
-                  <td className="p-3 text-[14px] text-[#6b5d45]">₪{activityBaseCost.toLocaleString()}</td>
-                  <td className="p-3 text-[14px]" style={{ fontWeight: 600 }}>₪{activitySelling.toLocaleString()}</td>
-                  <td className="p-3 text-[14px] text-green-600" style={{ fontWeight: 600 }}>₪{(activitySelling - activityBaseCost).toLocaleString()}</td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((w) => (
-                        <button
-                          key={w}
-                          onClick={() => setProfitWeights(p => ({ ...p, activity: w }))}
-                          className="transition-colors"
-                        >
-                          <Star size={16} fill={w <= profitWeights.activity ? '#ff8c00' : 'none'} className={w <= profitWeights.activity ? 'text-[#ff8c00]' : 'text-[#ddd6cb]'} />
-                        </button>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-              <tfoot>
-                <tr className="bg-[#181510] text-white">
-                  <td className="p-3 text-[14px]" style={{ fontWeight: 600 }}>סה"כ פרויקט</td>
-                  <td className="p-3 text-[14px]">₪{totalCost.toLocaleString()}</td>
-                  <td className="p-3 text-[14px]" style={{ fontWeight: 700 }}>₪{totalSelling.toLocaleString()}</td>
-                  <td className="p-3 text-[14px] text-green-400" style={{ fontWeight: 700 }}>₪{totalProfit.toLocaleString()} ({profitPercent}%)</td>
-                  <td className="p-3 text-[14px] text-[#c4b89a]">ממוצע: {((profitWeights.transport + profitWeights.activity) / 2).toFixed(1)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+          {items.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-xl border border-[#e7e1da]">
+              <p className="text-[16px] text-[#8d785e]">הוסף רכיבים בטאב "רכיבים וספקים" כדי לראות תמחור</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-[#e7e1da] overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-[#f5f3f0] border-b border-[#e7e1da] text-[12px] text-[#8d785e]">
+                    <th className="p-3 text-right" style={{ fontWeight: 600 }}>רכיב</th>
+                    <th className="p-3 text-right" style={{ fontWeight: 600 }}>עלות (ספק)</th>
+                    <th className="p-3 text-right" style={{ fontWeight: 600 }}>מחיר מכירה</th>
+                    <th className="p-3 text-right" style={{ fontWeight: 600 }}>רווח</th>
+                    <th className="p-3 text-right" style={{ fontWeight: 600 }}>משקל רווח</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map(item => (
+                    <tr key={item.id} className="border-b border-[#e7e1da]">
+                      <td className="p-3 text-[14px]" style={{ fontWeight: 500 }}>
+                        <span className="mr-1">{item.icon}</span> {item.type}
+                      </td>
+                      <td className="p-3 text-[14px] text-[#6b5d45]">₪{item.cost.toLocaleString()}</td>
+                      <td className="p-3 text-[14px]" style={{ fontWeight: 600 }}>₪{item.sellingPrice.toLocaleString()}</td>
+                      <td className="p-3 text-[14px] text-green-600" style={{ fontWeight: 600 }}>
+                        ₪{(item.sellingPrice - item.cost).toLocaleString()}
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map(w => (
+                            <button
+                              key={w}
+                              onClick={() => updateProfitWeight(item, w)}
+                              className="transition-colors"
+                            >
+                              <Star size={16} fill={w <= item.profitWeight ? '#ff8c00' : 'none'} className={w <= item.profitWeight ? 'text-[#ff8c00]' : 'text-[#ddd6cb]'} />
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-[#181510] text-white">
+                    <td className="p-3 text-[14px]" style={{ fontWeight: 600 }}>סה"כ פרויקט</td>
+                    <td className="p-3 text-[14px]">₪{totalCost.toLocaleString()}</td>
+                    <td className="p-3 text-[14px]" style={{ fontWeight: 700 }}>₪{totalSelling.toLocaleString()}</td>
+                    <td className="p-3 text-[14px] text-green-400" style={{ fontWeight: 700 }}>
+                      ₪{totalProfit.toLocaleString()} ({profitPercent}%)
+                    </td>
+                    <td className="p-3 text-[14px] text-[#c4b89a]">
+                      ממוצע: {items.length > 0 ? (items.reduce((s, i) => s + i.profitWeight, 0) / items.length).toFixed(1) : '0'}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Timeline Tab */}
+      {/* ═══ Timeline Tab ═══ */}
       {activeTab === 'timeline' && (
         <div className="space-y-5">
           <h2 className="text-[18px] text-[#181510] flex items-center gap-2" style={{ fontWeight: 700 }}>
             🕐 לו"ז הפעילות
           </h2>
-          <div className="bg-white rounded-xl border border-[#e7e1da] p-5">
-            <div className="space-y-0">
-              {timeline.map((event, idx) => (
-                <div key={idx} className="flex gap-4">
-                  <div className="flex flex-col items-center">
-                    <div className="w-10 h-10 rounded-full bg-[#ff8c00]/10 flex items-center justify-center text-[18px]">{event.icon}</div>
-                    {idx < timeline.length - 1 && <div className="w-0.5 flex-1 bg-[#e7e1da] my-1" />}
-                  </div>
-                  <div className="pb-6">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[14px] text-[#181510]" style={{ fontWeight: 700 }}>{event.time}</span>
-                      <span className="text-[14px] text-[#181510]" style={{ fontWeight: 600 }}>&bull; {event.title}</span>
-                    </div>
-                    <p className="text-[13px] text-[#8d785e]">{event.desc}</p>
-                  </div>
-                </div>
-              ))}
+
+          {timeline.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-xl border border-[#e7e1da]">
+              <div className="text-[40px] mb-3">🕐</div>
+              <p className="text-[16px] text-[#8d785e]">אין אירועי לו"ז לפרויקט זה</p>
             </div>
-          </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-[#e7e1da] p-5">
+              <div className="space-y-0">
+                {timeline.map((event, idx) => (
+                  <div key={event.id} className="flex gap-4">
+                    <div className="flex flex-col items-center">
+                      <div className="w-10 h-10 rounded-full bg-[#ff8c00]/10 flex items-center justify-center text-[18px]">{event.icon}</div>
+                      {idx < timeline.length - 1 && <div className="w-0.5 flex-1 bg-[#e7e1da] my-1" />}
+                    </div>
+                    <div className="pb-6">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[14px] text-[#181510]" style={{ fontWeight: 700 }}>{event.time}</span>
+                        <span className="text-[14px] text-[#181510]" style={{ fontWeight: 600 }}>&bull; {event.title}</span>
+                      </div>
+                      <p className="text-[13px] text-[#8d785e]">{event.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* Bottom actions */}
       <div className="flex gap-3 mt-6">
         <button
-          onClick={() => appToast.success('הטיוטה נשמרה בהצלחה', 'ניתן להמשיך לערוך בכל עת')}
-          className="bg-[#181510] hover:bg-[#2a2518] text-white px-6 py-2.5 rounded-xl text-[14px] transition-colors" style={{ fontWeight: 600 }}>
-          שמור טיוטה
+          onClick={saveDraft}
+          disabled={saving}
+          className="bg-[#181510] hover:bg-[#2a2518] disabled:opacity-50 text-white px-6 py-2.5 rounded-xl text-[14px] transition-colors flex items-center gap-2"
+          style={{ fontWeight: 600 }}
+        >
+          {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+          {saving ? 'שומר...' : 'שמור טיוטה'}
         </button>
         <button
-          onClick={() => appToast.neutral('השינויים בוטלו', 'הנתונים חזרו למצב האחרון ששמרת')}
-          className="text-[#8d785e] border border-[#e7e1da] px-6 py-2.5 rounded-xl text-[14px] hover:bg-[#f5f3f0] transition-colors">
+          onClick={() => {
+            const printWin = window.open('', '_blank');
+            if (!printWin) { appToast.error('חלון הדפסה נחסם'); return; }
+            const rows = items.map(i => `<tr><td style="padding:10px;border-bottom:1px solid #e7e1da">${i.icon} ${i.type}</td><td style="padding:10px;border-bottom:1px solid #e7e1da">${i.name}</td><td style="padding:10px;border-bottom:1px solid #e7e1da">${i.supplier || '-'}</td><td style="padding:10px;border-bottom:1px solid #e7e1da;font-weight:600">₪${i.sellingPrice.toLocaleString()}</td></tr>`).join('');
+            const tlRows = timeline.map(e => `<div style="display:flex;gap:12px;margin-bottom:12px"><div style="width:40px;text-align:center;font-weight:700;color:#ff8c00">${e.time}</div><div><b>${e.title}</b><br/><span style="color:#8d785e;font-size:13px">${e.description}</span></div></div>`).join('');
+            printWin.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>הצעת מחיר — ${project?.name || ''}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Assistant,Helvetica,Arial,sans-serif;color:#181510;padding:40px;max-width:800px;margin:0 auto}h1{font-size:24px;margin-bottom:4px}h2{font-size:18px;margin:24px 0 12px;border-bottom:2px solid #ff8c00;padding-bottom:6px}table{width:100%;border-collapse:collapse;margin-bottom:20px}th{text-align:right;padding:10px;background:#f5f3f0;border-bottom:2px solid #e7e1da;font-size:13px}.summary{display:flex;gap:24px;background:#f8f7f5;padding:16px;border-radius:12px;margin:16px 0}.summary div{text-align:center}.summary .value{font-size:22px;font-weight:700}.summary .label{font-size:12px;color:#8d785e}@media print{body{padding:20px}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px"><div><h1>הצעת מחיר</h1><p style="color:#8d785e;font-size:14px">${project?.name} — ${project?.company || ''}</p></div><div style="text-align:left"><p style="font-size:13px;color:#8d785e">מזהה: #${id}</p><p style="font-size:13px;color:#8d785e">${new Date().toLocaleDateString('he-IL')}</p></div></div><div class="summary"><div><div class="label">משתתפים</div><div class="value">${participants}</div></div><div><div class="label">מחיר לאדם</div><div class="value">₪${pricePerPerson.toLocaleString()}</div></div><div><div class="label">סה"כ</div><div class="value">₪${totalSelling.toLocaleString()}</div></div><div><div class="label">אזור</div><div class="value">${project?.region || ''}</div></div></div><h2>פירוט רכיבים</h2><table><thead><tr><th>סוג</th><th>רכיב</th><th>ספק</th><th>מחיר</th></tr></thead><tbody>${rows}</tbody><tfoot><tr style="background:#181510;color:white"><td colspan="3" style="padding:10px;font-weight:600">סה"כ</td><td style="padding:10px;font-weight:700">₪${totalSelling.toLocaleString()}</td></tr></tfoot></table>${tlRows ? `<h2>לו"ז הפעילות</h2>${tlRows}` : ''}<div style="margin-top:40px;text-align:center;color:#b8a990;font-size:12px"><p>הופק ע"י TravelPro &bull; ${new Date().toLocaleDateString('he-IL')}</p></div></body></html>`);
+            printWin.document.close();
+            setTimeout(() => { printWin.print(); }, 500);
+            appToast.success('PDF מוכן', 'חלון ההדפסה נפתח — בחר "שמור כ-PDF"');
+          }}
+          className="text-[#6b5d45] border border-[#e7e1da] px-5 py-2.5 rounded-xl text-[14px] hover:bg-[#f5f3f0] transition-colors flex items-center gap-2"
+        >
+          <Download size={16} />
+          ייצוא PDF
+        </button>
+        <button
+          onClick={() => loadData().then(() => appToast.neutral('השינויים בוטלו', 'הנתונים נטענו מחדש מהשרת'))}
+          className="text-[#8d785e] border border-[#e7e1da] px-6 py-2.5 rounded-xl text-[14px] hover:bg-[#f5f3f0] transition-colors"
+        >
           ביטול שינויים
         </button>
       </div>
 
-      {/* Create version modal */}
+      {/* ═══ Create version modal ═══ */}
       {showPreview && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowPreview(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
@@ -378,6 +568,10 @@ export function QuoteEditor() {
               <div className="flex justify-between text-[13px] mb-2">
                 <span className="text-[#8d785e]">גרסה:</span>
                 <span className="text-[#181510]" style={{ fontWeight: 600 }}>V1.0</span>
+              </div>
+              <div className="flex justify-between text-[13px] mb-2">
+                <span className="text-[#8d785e]">רכיבים:</span>
+                <span className="text-[#181510]" style={{ fontWeight: 600 }}>{items.length}</span>
               </div>
               <div className="flex justify-between text-[13px] mb-2">
                 <span className="text-[#8d785e]">סה"כ:</span>
@@ -390,7 +584,12 @@ export function QuoteEditor() {
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => { setShowPreview(false); appToast.success('גרסת הצעה V1.0 נוצרה בהצלחה!', 'מעביר לתצוגת לקוח...'); setTimeout(() => navigate(`/quote/${id}`), 1200); }}
+                onClick={async () => {
+                  await saveDraft();
+                  setShowPreview(false);
+                  appToast.success('גרסת הצעה V1.0 נוצרה בהצלחה!', 'מעביר לתצוגת לקוח...');
+                  setTimeout(() => navigate(`/quote/${id}`), 1200);
+                }}
                 className="flex-1 bg-[#ff8c00] hover:bg-[#e67e00] text-white py-2.5 rounded-xl transition-colors"
                 style={{ fontWeight: 600 }}
               >
@@ -402,27 +601,23 @@ export function QuoteEditor() {
         </div>
       )}
 
-      {/* Add component modal */}
-      {showAddComponent && (
+      {/* ═══ Add component modal ═══ */}
+      {showAddComponent && !showAddForm && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowAddComponent(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
             <h3 className="text-[20px] text-[#181510] mb-4" style={{ fontWeight: 700 }}>הוספת רכיב חדש</h3>
             <div className="grid grid-cols-2 gap-3">
-              {[
-                { icon: '🚌', label: 'תחבורה' },
-                { icon: '🏨', label: 'לינה' },
-                { icon: '🎯', label: 'פעילות' },
-                { icon: '🍽️', label: 'ארוחה' },
-                { icon: '🎤', label: 'בידור' },
-                { icon: '📦', label: 'אחר' },
-              ].map(item => (
+              {COMPONENT_TYPES.map(ct => (
                 <button
-                  key={item.label}
-                  onClick={() => setShowAddComponent(false)}
+                  key={ct.type}
+                  onClick={() => {
+                    setShowAddForm(ct.type);
+                    addForm.setValue('type', ct.type);
+                  }}
                   className="flex items-center gap-3 p-3 border border-[#e7e1da] rounded-xl hover:border-[#ff8c00] hover:bg-[#ff8c00]/5 transition-all"
                 >
-                  <span className="text-[20px]">{item.icon}</span>
-                  <span className="text-[14px] text-[#181510]" style={{ fontWeight: 500 }}>{item.label}</span>
+                  <span className="text-[20px]">{ct.icon}</span>
+                  <span className="text-[14px] text-[#181510]" style={{ fontWeight: 500 }}>{ct.label}</span>
                 </button>
               ))}
             </div>
@@ -430,46 +625,71 @@ export function QuoteEditor() {
         </div>
       )}
 
-      {/* Inline add supplier modal */}
-      {showAddSupplier && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowAddSupplier(false)}>
+      {/* ═══ Add component form ═══ */}
+      {showAddForm && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => { setShowAddForm(null); addForm.reset(); }}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-[20px] text-[#181510] mb-4" style={{ fontWeight: 700 }}>חיפוש ספק מהמאגר</h3>
-            <input
-              value={supplierSearch}
-              onChange={e => setSupplierSearch(e.target.value)}
-              className="w-full border border-[#e7e1da] rounded-lg px-3 py-2.5 text-[14px] mb-4 focus:outline-none focus:ring-2 focus:ring-[#ff8c00]/30 focus:border-[#ff8c00]"
-              placeholder="חפש ספק לפי שם, קטגוריה או אזור..."
-            />
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {[
-                { name: 'אוטובוסים הגליל', cat: 'תחבורה', icon: '🚌' },
-                { name: 'קייטרינג סאמי המזרח', cat: 'מזון', icon: '🍽️' },
-                { name: 'יקב רמת נפתלי', cat: 'אטרקציות', icon: '🍷' },
-              ].filter(s => s.name.includes(supplierSearch) || !supplierSearch).map(s => (
+            <h3 className="text-[20px] text-[#181510] mb-4" style={{ fontWeight: 700 }}>
+              הוספת {showAddForm} להצעה
+            </h3>
+            <form onSubmit={addForm.handleSubmit(onAddItem)} className="space-y-4">
+              <FormField
+                label="שם רכיב"
+                placeholder="למשל: אוטובוס מפואר"
+                required
+                error={addForm.formState.errors.name}
+                isDirty={addForm.formState.dirtyFields.name}
+                {...addForm.register('name', rules.requiredMin('שם רכיב', 2))}
+              />
+              <SupplierSearch
+                value={addForm.watch('supplier')}
+                onChange={(name) => addForm.setValue('supplier', name, { shouldDirty: true })}
+              />
+              <FormField
+                label="תיאור"
+                placeholder="פרטים נוספים..."
+                error={addForm.formState.errors.description}
+                isDirty={addForm.formState.dirtyFields.description}
+                {...addForm.register('description')}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  label="עלות (ספק)"
+                  type="number"
+                  placeholder="₪"
+                  required
+                  error={addForm.formState.errors.cost}
+                  isDirty={addForm.formState.dirtyFields.cost}
+                  {...addForm.register('cost', rules.positivePrice('עלות'))}
+                />
+                <FormField
+                  label="מחיר מכירה"
+                  type="number"
+                  placeholder="₪ (אוטומטי אם ריק)"
+                  error={addForm.formState.errors.sellingPrice}
+                  isDirty={addForm.formState.dirtyFields.sellingPrice}
+                  {...addForm.register('sellingPrice')}
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
                 <button
-                  key={s.name}
-                  onClick={() => setShowAddSupplier(false)}
-                  className="w-full flex items-center gap-3 p-3 border border-[#e7e1da] rounded-lg hover:bg-[#ff8c00]/5 hover:border-[#ff8c00] transition-all text-right"
+                  type="submit"
+                  disabled={saving || !addForm.formState.isValid}
+                  className="flex-1 bg-[#ff8c00] hover:bg-[#e67e00] disabled:opacity-50 text-white py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
+                  style={{ fontWeight: 600 }}
                 >
-                  <span className="text-[18px]">{s.icon}</span>
-                  <div>
-                    <div className="text-[14px] text-[#181510]" style={{ fontWeight: 600 }}>{s.name}</div>
-                    <div className="text-[12px] text-[#8d785e]">{s.cat}</div>
-                  </div>
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                  {saving ? 'מוסיף...' : 'הוסף רכיב'}
                 </button>
-              ))}
-            </div>
-            <div className="border-t border-[#e7e1da] pt-3 mt-3">
-              <button
-                onClick={() => { setShowAddSupplier(false); navigate('/suppliers?new=true'); }}
-                className="text-[13px] text-[#ff8c00] flex items-center gap-1"
-                style={{ fontWeight: 600 }}
-              >
-                <Plus size={14} />
-                הוסף ספק חדש למאגר
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => { setShowAddForm(null); addForm.reset(); }}
+                  className="px-5 border border-[#e7e1da] rounded-xl hover:bg-[#f5f3f0] transition-colors"
+                >
+                  ביטול
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
