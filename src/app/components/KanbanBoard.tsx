@@ -9,6 +9,7 @@ import {
   Lightbulb, ArrowLeftCircle, MoveRight
 } from 'lucide-react';
 import { kanbanApi } from './api';
+import { useConfirmDelete } from './ConfirmDeleteModal';
 
 // ═══════════════ TYPES ═══════════════
 
@@ -75,8 +76,8 @@ const FEATURE_OPTIONS = [
   'מערכת תמונות ואחסון',
 ];
 
-const STORAGE_KEY = 'travelpro-kanban-v9';
-const KANBAN_SEED_VERSION = 'v9'; // Bump to seed new INITIAL_TASKS to server
+const STORAGE_KEY = 'travelpro-kanban-v10';
+const KANBAN_SEED_VERSION = 'v10'; // Bump to seed new INITIAL_TASKS to server
 
 const VERSION_TABS: { id: Version; label: string; subtitle: string; color: string }[] = [
   { id: 'V1', label: 'V1', subtitle: 'MVP — 9 מסכים', color: '#ff8c00' },
@@ -363,6 +364,11 @@ const INITIAL_TASKS: Task[] = [
     id: 'd29', title: 'הסרת cursor-pointer מכרטיסי רכיבים בעורך הצעות',
     description: 'שם הספק/רכיב בכרטיסים בעורך הצעות המחיר הפך לטקסט רגיל — הוסרו cursor-pointer, onClick ואייקון Pencil כדי למנוע כניסה לעריכת פרטי ספק מתוך הפרויקט. כפתור "עריכה" הכתום הנפרד נשאר לעריכת הרכיב עצמו.',
     type: 'TASK', priority: 'MEDIUM', status: 'done', feature: 'עורך הצעות מחיר', estimate: '15m', tags: ['עורך הצעות', 'UX'], createdAt: '2026-02-22', version: 'V1',
+  },
+  {
+    id: 'd30', title: 'מערכת אישור מחיקה גלובלית — הקלדת "מחיקה"',
+    description: 'קומפוננט ConfirmDeleteModal.tsx עם hook useConfirmDelete — בכל פעולת מחיקה במערכת עולה מודאל שדורש הקלדת המילה "מחיקה" לפני אישור. שולב ב-7 קבצים: ProjectsList (מחיקת פרויקט), QuoteEditor (מחיקת רכיב הצעה), SupplierDetail (מחיקת איש קשר ומוצר), ItemEditor ו-ProductEditor (מחיקת תמונות), KanbanBoard (מחיקת משימה וקבצים מצורפים), SupplierLocationMap (מחיקת מיקום). כולל אנימציית Motion, auto-focus, תמיכה ב-Enter/Escape ומצב loading.',
+    type: 'TASK', priority: 'HIGH', status: 'done', feature: 'תשתית כללית', estimate: '2h', tags: ['UX', 'אבטחה', 'תשתית'], createdAt: '2026-02-22', version: 'V1',
   },
 
   // ════════════════════════════════════════
@@ -877,6 +883,7 @@ function TaskModal({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const [titleError, setTitleError] = useState('');
+  const { requestDelete: requestTaskDelete, modal: taskDeleteModal } = useConfirmDelete();
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -1040,10 +1047,16 @@ function TaskModal({
                           </button>
                           <button
                             onClick={() => {
-                              setForm(prev => ({
-                                ...prev,
-                                attachments: prev.attachments?.filter((_, i) => i !== idx) || [],
-                              }));
+                              requestTaskDelete({
+                                title: 'מחיקת קובץ מצורף',
+                                itemName: att.name,
+                                onConfirm: async () => {
+                                  setForm(prev => ({
+                                    ...prev,
+                                    attachments: prev.attachments?.filter((_, i) => i !== idx) || [],
+                                  }));
+                                },
+                              });
                             }}
                             className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center transition-colors flex-shrink-0"
                           >
@@ -1182,7 +1195,7 @@ function TaskModal({
           <div>
             {!isNew && (
               <button
-                onClick={() => { onDelete(form.id); onClose(); }}
+                onClick={() => requestTaskDelete({ title: 'מחיקת משימה', itemName: form.title, onConfirm: async () => { onDelete(form.id); onClose(); } })}
                 className="text-[13px] text-[#dc2626] hover:text-[#b91c1c] px-4 py-2 rounded-lg hover:bg-red-50 transition-colors"
                 style={{ fontWeight: 600 }}
               >
@@ -1220,6 +1233,7 @@ function TaskModal({
           />
         )}
       </AnimatePresence>
+      {taskDeleteModal}
     </motion.div>
   );
 }

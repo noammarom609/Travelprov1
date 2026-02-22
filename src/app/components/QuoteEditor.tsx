@@ -16,6 +16,7 @@ import { projectsApi, quoteItemsApi, timelineApi } from './api';
 import type { QuoteItem, TimelineEvent } from './api';
 import type { Project } from './data';
 import { ItemEditor } from './ItemEditor';
+import { useConfirmDelete } from './ConfirmDeleteModal';
 
 const KAYAK_IMG = 'https://images.unsplash.com/photo-1550515710-9324b8e4262e?w=800';
 const BUS_IMG = 'https://images.unsplash.com/photo-1765739099920-81a456008253?w=800';
@@ -202,6 +203,8 @@ export function QuoteEditor() {
 
   // Item Editor drawer
   const [editingItem, setEditingItem] = useState<QuoteItem | null>(null);
+
+  const { requestDelete, modal: deleteModal } = useConfirmDelete();
 
   const [editingDirectPriceId, setEditingDirectPriceId] = useState<string | null>(null);
   const [editingDirectPriceValue, setEditingDirectPriceValue] = useState('');
@@ -633,7 +636,7 @@ export function QuoteEditor() {
                       עריכה
                     </button>
                     <button
-                      onClick={() => deleteItem(item.id)}
+                      onClick={() => requestDelete({ title: 'מחיקת רכיב', itemName: item.name || item.supplier, onConfirm: () => deleteItem(item.id) })}
                       disabled={deletingItemId === item.id}
                       className="text-[#8d785e] hover:text-red-500 transition-colors disabled:opacity-50"
                     >
@@ -1023,6 +1026,9 @@ export function QuoteEditor() {
           onUpdate={handleItemUpdate}
         />
       )}
+
+      {/* Delete confirmation modal */}
+      {deleteModal}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
 import { quoteItemsApi } from './api';
 import type { QuoteItem } from './api';
 import { appToast } from './AppToast';
+import { useConfirmDelete } from './ConfirmDeleteModal';
 
 // ─── Type icon map (shared with QuoteEditor) ───
 const TYPE_ICONS: Record<string, React.ReactNode> = {
@@ -54,6 +55,8 @@ export function ItemEditor({ item, projectId, isOpen, onClose, onUpdate }: ItemE
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { requestDelete, modal: deleteModal } = useConfirmDelete();
 
   // Reset state when item changes
   useEffect(() => {
@@ -268,7 +271,7 @@ export function ItemEditor({ item, projectId, isOpen, onClose, onUpdate }: ItemE
 
                       {/* Delete current image */}
                       <button
-                        onClick={() => images[activeImageIdx] && handleDeleteImage(images[activeImageIdx].id)}
+                        onClick={() => images[activeImageIdx] && requestDelete({ title: 'מחיקת תמונה', itemName: images[activeImageIdx].name, onConfirm: () => handleDeleteImage(images[activeImageIdx].id) })}
                         className="absolute bottom-3 left-3 bg-red-500/80 hover:bg-red-500 backdrop-blur-md text-white text-[11px] px-2.5 py-1 rounded-full flex items-center gap-1 transition-colors"
                       >
                         <Trash2 size={11} />
@@ -619,6 +622,7 @@ export function ItemEditor({ item, projectId, isOpen, onClose, onUpdate }: ItemE
           </motion.div>
         </>
       )}
+      {deleteModal}
     </AnimatePresence>
   );
 }

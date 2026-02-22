@@ -17,6 +17,7 @@ import { ProductEditor } from './ProductEditor';
 import { SupplierLocationMap } from './SupplierLocationMap';
 import { computeAutoNotes, noteLevelStyles } from './supplierNotes';
 import type { AutoNote } from './supplierNotes';
+import { useConfirmDelete } from './ConfirmDeleteModal';
 
 const VINEYARD_IMG = 'https://images.unsplash.com/photo-1762330465953-75478d918896?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx2aW5leWFyZCUyMGdyYXBlJTIwaGlsbHNpZGUlMjBncmVlbnxlbnwxfHx8fDE3NzE0NjgyNDJ8MA&ixlib=rb-4.1.0&q=80&w=1080';
 
@@ -66,6 +67,8 @@ export function SupplierDetail() {
 
   // Product editor
   const [editingProduct, setEditingProduct] = useState<SupplierProduct | null>(null);
+
+  const { requestDelete, modal: deleteModal } = useConfirmDelete();
 
   // Archive
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
@@ -549,7 +552,7 @@ export function SupplierDetail() {
                       <span className="flex items-center gap-1"><Phone size={12} />{contact.phone}</span>
                       <span className="flex items-center gap-1"><Mail size={12} />{contact.email}</span>
                     </div>
-                    <button onClick={() => deleteContact(contact.id)} className="text-[#c4b89a] hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
+                    <button onClick={() => requestDelete({ title: 'מחיקת איש קשר', itemName: contact.name, onConfirm: () => deleteContact(contact.id) })} className="text-[#c4b89a] hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
                   </div>
                 </div>
               ))}
@@ -584,7 +587,7 @@ export function SupplierDetail() {
                   >
                     {/* Delete button */}
                     <button
-                      onClick={(e) => { e.stopPropagation(); deleteProduct(product.id); }}
+                      onClick={(e) => { e.stopPropagation(); requestDelete({ title: 'מחיקת מוצר', itemName: product.name, onConfirm: () => deleteProduct(product.id) }); }}
                       className="absolute top-2 left-2 z-10 w-7 h-7 bg-white/90 rounded-full flex items-center justify-center text-[#c4b89a] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all shadow-sm"
                     >
                       <Trash2 size={12} />
@@ -1052,6 +1055,9 @@ export function SupplierDetail() {
           </div>
         </div>
       )}
+
+      {/* Delete confirmation modal */}
+      {deleteModal}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import type { Project } from './data';
 import { projectsApi } from './api';
 import { appToast } from './AppToast';
 import { FormField, FormSelect, rules } from './FormField';
+import { useConfirmDelete } from './ConfirmDeleteModal';
 
 const STATUS_OPTIONS_ALL = ['הכל', 'ליד חדש', 'בניית הצעה', 'הצעה נשלחה', 'אושר', 'מחיר בהערכה', 'בביצוע'];
 const STATUS_CHANGE_OPTIONS = ['ליד חדש', 'בניית הצעה', 'הצעה נשלחה', 'אושר', 'מחיר בהערכה', 'בביצוע'];
@@ -42,10 +43,10 @@ export function ProjectsList() {
   // Action state
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const [statusProject, setStatusProject] = useState<Project | null>(null);
   const [saving, setSaving] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const { requestDelete, modal: deleteModal } = useConfirmDelete();
 
   // Edit form
   const editForm = useForm<EditProjectForm>({
@@ -159,24 +160,16 @@ export function ProjectsList() {
 
   // ─── Delete project ───
   const openDelete = (project: Project) => {
-    setDeletingProject(project);
     setOpenMenu(null);
-  };
-
-  const confirmDelete = async () => {
-    if (!deletingProject) return;
-    try {
-      setSaving(true);
-      await projectsApi.delete(deletingProject.id);
-      setProjects(prev => prev.filter(p => p.id !== deletingProject.id));
-      appToast.success('פרויקט נמחק', `"${deletingProject.name}" הוסר מהמערכת`);
-      setDeletingProject(null);
-    } catch (err) {
-      console.error('[ProjectsList] Delete failed:', err);
-      appToast.error('שגיאה', 'לא ניתן למחוק את הפרויקט');
-    } finally {
-      setSaving(false);
-    }
+    requestDelete({
+      title: 'מחיקת פרויקט',
+      itemName: project.name,
+      onConfirm: async () => {
+        await projectsApi.delete(project.id);
+        setProjects(prev => prev.filter(p => p.id !== project.id));
+        appToast.success('פרויקט נמחק', `"${project.name}" הוסר מהמערכת`);
+      },
+    });
   };
 
   return (
@@ -431,40 +424,8 @@ export function ProjectsList() {
         </div>
       )}
 
-      {/* ═══ Delete Confirmation Modal ═══ */}
-      {deletingProject && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setDeletingProject(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center">
-                <AlertTriangle size={24} className="text-red-500" />
-              </div>
-              <div>
-                <h3 className="text-[18px] text-[#181510]" style={{ fontWeight: 700 }}>מחיקת פרויקט</h3>
-                <p className="text-[13px] text-[#8d785e]">פעולה זו אינה ניתנת לביטול</p>
-              </div>
-            </div>
-            <p className="text-[14px] text-[#181510] mb-5">
-              האם אתה בטוח שברצונך למחוק את הפרויקט{' '}
-              <span style={{ fontWeight: 700 }}>"{deletingProject.name}"</span>?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={confirmDelete}
-                disabled={saving}
-                className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
-                style={{ fontWeight: 600 }}
-              >
-                {saving ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                {saving ? 'מוחק...' : 'כן, מחק'}
-              </button>
-              <button onClick={() => setDeletingProject(null)} className="px-5 border border-[#e7e1da] rounded-xl hover:bg-[#f5f3f0] transition-colors">
-                ביטול
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Delete confirmation modal */}
+      {deleteModal}
     </div>
   );
 }

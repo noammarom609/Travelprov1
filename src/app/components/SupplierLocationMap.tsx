@@ -4,6 +4,7 @@ import L from 'leaflet';
 import type { Supplier } from './data';
 import { suppliersApi } from './api';
 import { appToast } from './AppToast';
+import { useConfirmDelete } from './ConfirmDeleteModal';
 
 // Fix Leaflet default marker icon (missing in bundlers)
 const defaultIcon = L.icon({
@@ -56,6 +57,7 @@ export function SupplierLocationMap({ supplier, onUpdate }: Props) {
 
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { requestDelete: requestLocationDelete, modal: locationDeleteModal } = useConfirmDelete();
 
   // Initialize map
   useEffect(() => {
@@ -270,7 +272,7 @@ export function SupplierLocationMap({ supplier, onUpdate }: Props) {
             />
           ) : address && hasLocation ? (
             <button
-              onClick={clearLocation}
+              onClick={() => requestLocationDelete({ title: 'מחיקת מיקום', itemName: address.split(',')[0], onConfirm: () => clearLocation() })}
               className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8d785e] hover:text-red-500 transition-colors"
             >
               <X size={14} />
@@ -328,6 +330,8 @@ export function SupplierLocationMap({ supplier, onUpdate }: Props) {
           <MapPin size={13} /> {supplier.region}
         </div>
       )}
+
+      {locationDeleteModal}
     </div>
   );
 }

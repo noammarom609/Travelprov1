@@ -7,6 +7,7 @@ import {
 import { supplierProductsApi } from './api';
 import type { SupplierProduct } from './api';
 import { appToast } from './AppToast';
+import { useConfirmDelete } from './ConfirmDeleteModal';
 
 const UNIT_OPTIONS = ['אדם', 'אירוע', 'יום', 'קבוצה', 'חבילה', 'יחידה'];
 
@@ -32,6 +33,8 @@ export function ProductEditor({ product, supplierId, isOpen, onClose, onUpdate }
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { requestDelete, modal: deleteModal } = useConfirmDelete();
 
   useEffect(() => {
     setName(product.name);
@@ -204,7 +207,7 @@ export function ProductEditor({ product, supplierId, isOpen, onClose, onUpdate }
                         </>
                       )}
                       <button
-                        onClick={() => images[activeImageIdx] && handleDeleteImage(images[activeImageIdx].id)}
+                        onClick={() => images[activeImageIdx] && requestDelete({ title: 'מחיקת תמונה', itemName: images[activeImageIdx].name, onConfirm: () => handleDeleteImage(images[activeImageIdx].id) })}
                         className="absolute bottom-3 left-3 bg-red-500/80 hover:bg-red-500 backdrop-blur-md text-white text-[11px] px-2.5 py-1 rounded-full flex items-center gap-1 transition-colors"
                       >
                         <Trash2 size={11} /> מחק
@@ -453,6 +456,7 @@ export function ProductEditor({ product, supplierId, isOpen, onClose, onUpdate }
           </motion.div>
         </>
       )}
+      {deleteModal}
     </AnimatePresence>
   );
 }
