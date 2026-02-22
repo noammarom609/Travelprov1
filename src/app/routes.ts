@@ -12,13 +12,13 @@ import { ScannedProducts } from './components/ScannedProducts';
 import { ClientQuote } from './components/ClientQuote';
 import { PRDDocument } from './components/PRDDocument';
 import { RootErrorBoundary } from './components/ErrorBoundary';
+import { ClientsPage } from './components/ClientsPage';
 import {
-  ClientsPage,
-  DocumentsPage,
   SettingsPage,
-  CalendarPage,
   NotFoundPage,
 } from './components/PlaceholderPage';
+import { CalendarPage } from './components/CalendarPage';
+import { DocumentsPage } from './components/DocumentsPage';
 
 export const router = createBrowserRouter(
   [
