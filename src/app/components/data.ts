@@ -11,6 +11,8 @@ export interface Supplier {
   verificationStatus: 'verified' | 'pending' | 'unverified';
   notes: string;
   icon: string;
+  address?: string;
+  location?: { lat: number; lng: number };
 }
 
 export interface Project {
@@ -51,7 +53,7 @@ export const suppliers: Supplier[] = [
   },
   {
     id: '2',
-    name: 'קייטרינג סעמי המזרח',
+    name: 'קייטרינג סאמי המזרח',
     phone: '032115664',
     category: 'מזון',
     categoryColor: '#22c55e',
@@ -258,7 +260,7 @@ export const quoteComponents = [
     sellingPrice: 36000,
     profitWeight: 4,
     alternatives: [
-      { id: 'a1', name: 'רייזרס בגוף', description: 'מתחם ג׳ונגל/רייזרים', cost: 240, image: 'kayak', selected: true },
+      { id: 'a1', name: 'רייזרים בגוף', description: 'מתחם ג\'ונגל/רייזרים', cost: 240, image: 'kayak', selected: true },
       { id: 'a2', name: 'קייקי הגליל', description: 'מתחם פעילות/רייזרים', cost: 110, image: 'bus' },
       { id: 'a3', name: 'ספק מהאינטרנט', description: 'מתחם ביער/בגוף', cost: 180, image: 'globe' },
     ],

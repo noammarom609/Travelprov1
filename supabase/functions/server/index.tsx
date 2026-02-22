@@ -45,8 +45,8 @@ const SEED_PROJECTS = [
 ];
 
 const SEED_QUOTE_ITEMS = [
-  { id: "qi-1", projectId: "4829-24", type: "תחבורה", icon: "🚌", name: "אוטובוסים הגליל", supplier: "אוטובוסים הגליל", description: "3 אוטובוסים ממוגנים, איסוף מהמרכז", cost: 7500, sellingPrice: 9000, profitWeight: 2, status: "approved" },
-  { id: "qi-2", projectId: "4829-24", type: "פעילות בוקר", icon: "🎯", name: "רייזרס בגוף", supplier: "רייזרס בגוף", description: "מתחם ג׳ונגל/רייזרים", cost: 28800, sellingPrice: 36000, profitWeight: 4, status: "modified", alternatives: [{ id: "a1", name: "רייזרס בגוף", description: "מתחם ג׳ונגל/רייזרים", costPerPerson: 240, selected: true }, { id: "a2", name: "קייקי הגליל", description: "מתחם פעילות/רייזרים", costPerPerson: 110, selected: false }, { id: "a3", name: "ספק מהאינטרנט", description: "מתחם ביער/בגוף", costPerPerson: 180, selected: false }] },
+  { id: "qi-1", projectId: "4829-24", type: "תחבורה", icon: "🚌", name: "אוטובוסים הגליל", supplier: "אוטובוסים הגליל", description: "3 אוטובוסים ממוגנים, איסוף מהמרכז", cost: 7500, directPrice: 9500, sellingPrice: 9000, profitWeight: 2, status: "approved" },
+  { id: "qi-2", projectId: "4829-24", type: "פעילות בוקר", icon: "🎯", name: "רייזרס בגוף", supplier: "רייזרס בגוף", description: "מתחם ג׳ונגל/רייזרים", cost: 28800, directPrice: 37200, sellingPrice: 36000, profitWeight: 4, status: "modified", alternatives: [{ id: "a1", name: "רייזרס בגוף", description: "מתחם ג׳ונגל/רייזרים", costPerPerson: 240, selected: true }, { id: "a2", name: "קייקי הגליל", description: "מתחם פעילות/רייזרים", costPerPerson: 110, selected: false }, { id: "a3", name: "ספק מהאינטרנט", description: "מתחם ביער/בגוף", costPerPerson: 180, selected: false }] },
 ];
 
 const SEED_TIMELINE_EVENTS = [
@@ -104,7 +104,7 @@ app.post(`${PREFIX}/signup`, async (c) => {
 // ─── SEED ─────────────────────────────────────────
 app.post(`${PREFIX}/seed`, async (c) => {
   try {
-    const alreadySeeded = await kv.get("_meta:seeded_v2");
+    const alreadySeeded = await kv.get("_meta:seeded_v3");
     if (alreadySeeded) return c.json({ data: { skipped: true } });
 
     await kv.mset(SEED_SUPPLIERS.map(s => `supplier:${s.id}`), SEED_SUPPLIERS);
@@ -114,9 +114,9 @@ app.post(`${PREFIX}/seed`, async (c) => {
     await kv.mset(SEED_SUPPLIER_CONTACTS.map(c => `supplier_contact:${c.id}`), SEED_SUPPLIER_CONTACTS);
     await kv.mset(SEED_SUPPLIER_PRODUCTS.map(p => `supplier_product:${p.id}`), SEED_SUPPLIER_PRODUCTS);
     await kv.mset(SEED_SUPPLIER_DOCUMENTS.map(d => `supplier_document:${d.id}`), SEED_SUPPLIER_DOCUMENTS);
-    await kv.set("_meta:seeded_v2", { seededAt: new Date().toISOString() });
+    await kv.set("_meta:seeded_v3", { seededAt: new Date().toISOString() });
 
-    console.log("[Seed] All data seeded");
+    console.log("[Seed] All data seeded (v3 with directPrice)");
     return c.json({ data: { skipped: false, suppliers: SEED_SUPPLIERS.length, projects: SEED_PROJECTS.length } });
   } catch (err) { console.log(`[Seed] Error: ${err}`); return c.json({ error: `Seed failed: ${err}` }, 500); }
 });
@@ -168,6 +168,109 @@ app.delete(`${PREFIX}/suppliers/:id`, async (c) => {
     await kv.del(`supplier:${id}`);
     return c.json({ data: { success: true, id } });
   } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+// ─── SUPPLIERS BULK IMPORT ──────────────────────
+app.post(`${PREFIX}/suppliers/bulk-import`, async (c) => {
+  try {
+    const { suppliers } = await c.req.json();
+    if (!suppliers || !Array.isArray(suppliers) || suppliers.length === 0) {
+      return c.json({ error: "suppliers array required" }, 400);
+    }
+
+    const imported: any[] = [];
+    const skipped: string[] = [];
+
+    // Get existing suppliers to check duplicates
+    const existingSuppliers = await kv.getByPrefix("supplier:");
+    const existingNames = new Set(existingSuppliers.map((s: any) => (s.name || "").trim().toLowerCase()));
+
+    for (let i = 0; i < suppliers.length; i += 25) {
+      const batch = suppliers.slice(i, i + 25);
+      const validBatch: any[] = [];
+      const keys: string[] = [];
+
+      for (const s of batch) {
+        const name = (s.name || "").trim();
+        if (!name) { skipped.push("(ללא שם)"); continue; }
+
+        // Skip if duplicate and action is 'skip'
+        if (s._action === "skip") { skipped.push(name); continue; }
+
+        const id = generateId();
+        const category = (s.category || "").trim();
+        const supplier = {
+          id,
+          name,
+          phone: (s.phone || "").trim(),
+          email: (s.email || "").trim(),
+          category,
+          categoryColor: CATEGORY_COLORS[category] || "#8d785e",
+          region: (s.region || "").trim(),
+          rating: 0,
+          verificationStatus: "unverified",
+          notes: (s.notes || "").trim() || "-",
+          icon: CATEGORY_ICONS[category] || "📦",
+        };
+
+        keys.push(`supplier:${id}`);
+        validBatch.push(supplier);
+        imported.push(supplier);
+      }
+
+      if (keys.length > 0) {
+        await kv.mset(keys, validBatch);
+      }
+    }
+
+    console.log(`[Import] Bulk imported ${imported.length} suppliers, skipped ${skipped.length}`);
+    return c.json({ data: { imported: imported.length, skipped: skipped.length, suppliers: imported } }, 201);
+  } catch (err) {
+    console.log(`[Import] Bulk import error: ${err}`);
+    return c.json({ error: `Bulk import failed: ${err}` }, 500);
+  }
+});
+
+// ─── SUPPLIERS BULK ROLLBACK ────────────────────
+app.post(`${PREFIX}/suppliers/bulk-rollback`, async (c) => {
+  try {
+    const { supplierIds } = await c.req.json();
+    if (!supplierIds || !Array.isArray(supplierIds) || supplierIds.length === 0) {
+      return c.json({ error: "supplierIds array required" }, 400);
+    }
+
+    let deleted = 0;
+    let notFound = 0;
+
+    // Also delete any contacts, products, documents linked to these suppliers
+    const allContacts = await kv.getByPrefix("supplier_contact:");
+    const allProducts = await kv.getByPrefix("supplier_product:");
+    const allDocuments = await kv.getByPrefix("supplier_document:");
+
+    for (const id of supplierIds) {
+      const existing = await kv.get(`supplier:${id}`);
+      if (!existing) { notFound++; continue; }
+
+      // Delete the supplier
+      await kv.del(`supplier:${id}`);
+      deleted++;
+
+      // Clean up related sub-resources
+      const relatedContacts = allContacts.filter((c: any) => c.supplierId === id);
+      const relatedProducts = allProducts.filter((p: any) => p.supplierId === id);
+      const relatedDocs = allDocuments.filter((d: any) => d.supplierId === id);
+
+      for (const c of relatedContacts) await kv.del(`supplier_contact:${c.id}`);
+      for (const p of relatedProducts) await kv.del(`supplier_product:${p.id}`);
+      for (const d of relatedDocs) await kv.del(`supplier_document:${d.id}`);
+    }
+
+    console.log(`[Import] Rollback: deleted ${deleted} suppliers, ${notFound} not found`);
+    return c.json({ data: { deleted, notFound } });
+  } catch (err) {
+    console.log(`[Import] Rollback error: ${err}`);
+    return c.json({ error: `Rollback failed: ${err}` }, 500);
+  }
 });
 
 // ─── SUPPLIER CONTACTS ───────────────────────────
@@ -226,6 +329,102 @@ app.delete(`${PREFIX}/suppliers/:supplierId/products/:productId`, async (c) => {
     await kv.del(`supplier_product:${productId}`);
     return c.json({ data: { success: true, id: productId } });
   } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+// ─── SUPPLIER PRODUCT UPDATE ─────────────────────
+app.put(`${PREFIX}/suppliers/:supplierId/products/:productId`, async (c) => {
+  try {
+    const productId = c.req.param("productId");
+    const existing = await kv.get(`supplier_product:${productId}`);
+    if (!existing) return c.json({ error: "Not found" }, 404);
+    const body = await c.req.json();
+    const updated = { ...existing, ...body, id: productId, supplierId: c.req.param("supplierId") };
+    await kv.set(`supplier_product:${productId}`, updated);
+    return c.json({ data: updated });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+// ─── SUPPLIER PRODUCT IMAGES ─────────────────────
+app.post(`${PREFIX}/suppliers/:supplierId/products/:productId/images`, async (c) => {
+  try {
+    const productId = c.req.param("productId");
+    const existing = await kv.get(`supplier_product:${productId}`);
+    if (!existing) return c.json({ error: "Product not found" }, 404);
+
+    const { base64, fileName, contentType } = await c.req.json();
+    if (!base64) return c.json({ error: "No image data provided" }, 400);
+
+    const supabase = await ensureImageBucket();
+
+    const rawBase64 = base64.includes(",") ? base64.split(",")[1] : base64;
+    const binaryStr = atob(rawBase64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+    const imageId = `img-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const ext = (fileName || "image.jpg").split(".").pop() || "jpg";
+    const storagePath = `products/${productId}/${imageId}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(IMAGE_BUCKET)
+      .upload(storagePath, bytes, { contentType: contentType || "image/jpeg", upsert: false });
+
+    if (uploadError) {
+      console.log(`[Storage] Product image upload error: ${uploadError.message}`);
+      return c.json({ error: `Upload failed: ${uploadError.message}` }, 500);
+    }
+
+    const { data: signedData, error: signError } = await supabase.storage
+      .from(IMAGE_BUCKET)
+      .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+
+    if (signError) {
+      console.log(`[Storage] Product sign URL error: ${signError.message}`);
+      return c.json({ error: `Sign URL failed: ${signError.message}` }, 500);
+    }
+
+    const newImage = { id: imageId, url: signedData.signedUrl, name: fileName || "image.jpg", path: storagePath };
+    const images = [...(existing.images || []), newImage];
+    const updated = { ...existing, images, id: productId, supplierId: c.req.param("supplierId") };
+    await kv.set(`supplier_product:${productId}`, updated);
+
+    console.log(`[Storage] Product image uploaded: ${storagePath} for product ${productId}`);
+    return c.json({ data: updated }, 201);
+  } catch (err) {
+    console.log(`[Storage] Product image upload exception: ${err}`);
+    return c.json({ error: `Product image upload failed: ${err}` }, 500);
+  }
+});
+
+app.delete(`${PREFIX}/suppliers/:supplierId/products/:productId/images/:imageId`, async (c) => {
+  try {
+    const productId = c.req.param("productId");
+    const imageId = c.req.param("imageId");
+    const existing = await kv.get(`supplier_product:${productId}`);
+    if (!existing) return c.json({ error: "Product not found" }, 404);
+
+    const images = existing.images || [];
+    const imageToDelete = images.find((img: any) => img.id === imageId);
+
+    if (imageToDelete && imageToDelete.path) {
+      try {
+        const supabase = await ensureImageBucket();
+        await supabase.storage.from(IMAGE_BUCKET).remove([imageToDelete.path]);
+        console.log(`[Storage] Deleted product image: ${imageToDelete.path}`);
+      } catch (storageErr) {
+        console.log(`[Storage] Delete product image error (non-fatal): ${storageErr}`);
+      }
+    }
+
+    const updatedImages = images.filter((img: any) => img.id !== imageId);
+    const updated = { ...existing, images: updatedImages, id: productId, supplierId: c.req.param("supplierId") };
+    await kv.set(`supplier_product:${productId}`, updated);
+
+    return c.json({ data: updated });
+  } catch (err) {
+    console.log(`[Storage] Product image delete exception: ${err}`);
+    return c.json({ error: `Product image delete failed: ${err}` }, 500);
+  }
 });
 
 // ─── SUPPLIER DOCUMENTS ──────────────────────────
@@ -333,7 +532,7 @@ app.post(`${PREFIX}/projects/:projectId/items`, async (c) => {
     const projectId = c.req.param("projectId");
     const body = await c.req.json();
     const id = body.id || `qi-${generateId()}`;
-    const item = { id, projectId, type: body.type || "", icon: body.icon || "📦", name: body.name || "", supplier: body.supplier || "", description: body.description || "", cost: body.cost ?? 0, sellingPrice: body.sellingPrice ?? 0, profitWeight: body.profitWeight ?? 3, status: body.status || "pending", alternatives: body.alternatives || [] };
+    const item = { id, projectId, type: body.type || "", icon: body.icon || "📦", name: body.name || "", supplier: body.supplier || "", description: body.description || "", cost: body.cost ?? 0, directPrice: body.directPrice ?? 0, sellingPrice: body.sellingPrice ?? 0, profitWeight: body.profitWeight ?? 3, status: body.status || "pending", alternatives: body.alternatives || [] };
     await kv.set(`quote_item:${id}`, item);
     return c.json({ data: item }, 201);
   } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
@@ -358,6 +557,109 @@ app.delete(`${PREFIX}/projects/:projectId/items/:itemId`, async (c) => {
     await kv.del(`quote_item:${itemId}`);
     return c.json({ data: { success: true, id: itemId } });
   } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+// ─── ITEM IMAGES (Supabase Storage) ──────────────
+const IMAGE_BUCKET = "make-0045c7fc-images";
+
+async function ensureImageBucket() {
+  try {
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: buckets } = await supabase.storage.listBuckets();
+    const bucketExists = buckets?.some((bucket: any) => bucket.name === IMAGE_BUCKET);
+    if (!bucketExists) {
+      await supabase.storage.createBucket(IMAGE_BUCKET, { public: false });
+      console.log(`[Storage] Created bucket: ${IMAGE_BUCKET}`);
+    }
+    return supabase;
+  } catch (err) {
+    console.log(`[Storage] Bucket init error: ${err}`);
+    throw err;
+  }
+}
+
+app.post(`${PREFIX}/projects/:projectId/items/:itemId/images`, async (c) => {
+  try {
+    const itemId = c.req.param("itemId");
+    const existing = await kv.get(`quote_item:${itemId}`);
+    if (!existing) return c.json({ error: "Item not found" }, 404);
+
+    const { base64, fileName, contentType } = await c.req.json();
+    if (!base64) return c.json({ error: "No image data provided" }, 400);
+
+    const supabase = await ensureImageBucket();
+
+    // Extract raw base64 data (strip data:image/...;base64, prefix)
+    const rawBase64 = base64.includes(",") ? base64.split(",")[1] : base64;
+    const binaryStr = atob(rawBase64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+    const imageId = `img-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const ext = (fileName || "image.jpg").split(".").pop() || "jpg";
+    const storagePath = `items/${itemId}/${imageId}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(IMAGE_BUCKET)
+      .upload(storagePath, bytes, { contentType: contentType || "image/jpeg", upsert: false });
+
+    if (uploadError) {
+      console.log(`[Storage] Upload error: ${uploadError.message}`);
+      return c.json({ error: `Upload failed: ${uploadError.message}` }, 500);
+    }
+
+    // Generate signed URL (7 days)
+    const { data: signedData, error: signError } = await supabase.storage
+      .from(IMAGE_BUCKET)
+      .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+
+    if (signError) {
+      console.log(`[Storage] Sign URL error: ${signError.message}`);
+      return c.json({ error: `Sign URL failed: ${signError.message}` }, 500);
+    }
+
+    const newImage = { id: imageId, url: signedData.signedUrl, name: fileName || "image.jpg", path: storagePath };
+    const images = [...(existing.images || []), newImage];
+    const updated = { ...existing, images, id: itemId, projectId: c.req.param("projectId") };
+    await kv.set(`quote_item:${itemId}`, updated);
+
+    console.log(`[Storage] Image uploaded: ${storagePath} for item ${itemId}`);
+    return c.json({ data: updated }, 201);
+  } catch (err) {
+    console.log(`[Storage] Image upload exception: ${err}`);
+    return c.json({ error: `Image upload failed: ${err}` }, 500);
+  }
+});
+
+app.delete(`${PREFIX}/projects/:projectId/items/:itemId/images/:imageId`, async (c) => {
+  try {
+    const itemId = c.req.param("itemId");
+    const imageId = c.req.param("imageId");
+    const existing = await kv.get(`quote_item:${itemId}`);
+    if (!existing) return c.json({ error: "Item not found" }, 404);
+
+    const images = existing.images || [];
+    const imageToDelete = images.find((img: any) => img.id === imageId);
+
+    if (imageToDelete && imageToDelete.path) {
+      try {
+        const supabase = await ensureImageBucket();
+        await supabase.storage.from(IMAGE_BUCKET).remove([imageToDelete.path]);
+        console.log(`[Storage] Deleted: ${imageToDelete.path}`);
+      } catch (storageErr) {
+        console.log(`[Storage] Delete file error (non-fatal): ${storageErr}`);
+      }
+    }
+
+    const updatedImages = images.filter((img: any) => img.id !== imageId);
+    const updated = { ...existing, images: updatedImages, id: itemId, projectId: c.req.param("projectId") };
+    await kv.set(`quote_item:${itemId}`, updated);
+
+    return c.json({ data: updated });
+  } catch (err) {
+    console.log(`[Storage] Image delete exception: ${err}`);
+    return c.json({ error: `Image delete failed: ${err}` }, 500);
+  }
 });
 
 // ─── TIMELINE EVENTS ─────────────────────────────
@@ -429,6 +731,120 @@ app.post(`${PREFIX}/public/quote/:id/approve`, async (c) => {
     console.log(`[Public] Client approved project ${id}`);
     return c.json({ data: { success: true } });
   } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+// ─── KANBAN TASKS ────────────────────────────────
+const KANBAN_SEED_KEY = "_meta:kanban_seeded_v1";
+
+app.get(`${PREFIX}/kanban/tasks`, async (c) => {
+  try {
+    const all = await kv.getByPrefix("kanban_task:");
+    return c.json({ data: all });
+  } catch (err) {
+    console.log(`[Kanban] List error: ${err}`);
+    return c.json({ error: `Failed to list kanban tasks: ${err}` }, 500);
+  }
+});
+
+app.post(`${PREFIX}/kanban/tasks`, async (c) => {
+  try {
+    const body = await c.req.json();
+    const id = body.id || `kt-${generateId()}`;
+    const task = {
+      id,
+      title: body.title || "",
+      description: body.description || "",
+      type: body.type || "TASK",
+      priority: body.priority || "MEDIUM",
+      status: body.status || "todo",
+      feature: body.feature || "",
+      estimate: body.estimate || "",
+      tags: body.tags || [],
+      createdAt: body.createdAt || new Date().toISOString().split("T")[0],
+      version: body.version || "V1",
+    };
+    await kv.set(`kanban_task:${id}`, task);
+    console.log(`[Kanban] Task created: ${id} — ${task.title}`);
+    return c.json({ data: task }, 201);
+  } catch (err) {
+    console.log(`[Kanban] Create error: ${err}`);
+    return c.json({ error: `Failed to create kanban task: ${err}` }, 500);
+  }
+});
+
+app.put(`${PREFIX}/kanban/tasks/:id`, async (c) => {
+  try {
+    const id = c.req.param("id");
+    const existing = await kv.get(`kanban_task:${id}`);
+    if (!existing) return c.json({ error: "Kanban task not found" }, 404);
+    const body = await c.req.json();
+    const updated = { ...existing, ...body, id };
+    await kv.set(`kanban_task:${id}`, updated);
+    return c.json({ data: updated });
+  } catch (err) {
+    console.log(`[Kanban] Update error: ${err}`);
+    return c.json({ error: `Failed to update kanban task: ${err}` }, 500);
+  }
+});
+
+app.delete(`${PREFIX}/kanban/tasks/:id`, async (c) => {
+  try {
+    const id = c.req.param("id");
+    if (!(await kv.get(`kanban_task:${id}`))) return c.json({ error: "Kanban task not found" }, 404);
+    await kv.del(`kanban_task:${id}`);
+    console.log(`[Kanban] Task deleted: ${id}`);
+    return c.json({ data: { success: true, id } });
+  } catch (err) {
+    console.log(`[Kanban] Delete error: ${err}`);
+    return c.json({ error: `Failed to delete kanban task: ${err}` }, 500);
+  }
+});
+
+// Bulk seed — writes all provided tasks to KV (idempotent by version key)
+app.post(`${PREFIX}/kanban/seed`, async (c) => {
+  try {
+    const { tasks, version } = await c.req.json();
+    const seedKey = version ? `_meta:kanban_seeded_${version}` : KANBAN_SEED_KEY;
+    const alreadySeeded = await kv.get(seedKey);
+    if (alreadySeeded) return c.json({ data: { skipped: true } });
+
+    if (!tasks || !Array.isArray(tasks)) return c.json({ error: "tasks array required" }, 400);
+
+    // Write tasks in batches of 25
+    for (let i = 0; i < tasks.length; i += 25) {
+      const batch = tasks.slice(i, i + 25);
+      await kv.mset(
+        batch.map((t: any) => `kanban_task:${t.id}`),
+        batch,
+      );
+    }
+    await kv.set(seedKey, { seededAt: new Date().toISOString(), count: tasks.length });
+    console.log(`[Kanban] Seeded ${tasks.length} tasks (${seedKey})`);
+    return c.json({ data: { skipped: false, count: tasks.length } });
+  } catch (err) {
+    console.log(`[Kanban] Seed error: ${err}`);
+    return c.json({ error: `Kanban seed failed: ${err}` }, 500);
+  }
+});
+
+// Bulk update — for drag & drop or batch operations
+app.put(`${PREFIX}/kanban/tasks-bulk`, async (c) => {
+  try {
+    const { tasks } = await c.req.json();
+    if (!tasks || !Array.isArray(tasks)) return c.json({ error: "tasks array required" }, 400);
+    for (let i = 0; i < tasks.length; i += 25) {
+      const batch = tasks.slice(i, i + 25);
+      await kv.mset(
+        batch.map((t: any) => `kanban_task:${t.id}`),
+        batch,
+      );
+    }
+    console.log(`[Kanban] Bulk updated ${tasks.length} tasks`);
+    return c.json({ data: { updated: tasks.length } });
+  } catch (err) {
+    console.log(`[Kanban] Bulk update error: ${err}`);
+    return c.json({ error: `Kanban bulk update failed: ${err}` }, 500);
+  }
 });
 
 Deno.serve(app.fetch);

@@ -61,6 +61,24 @@ export const suppliersApi = {
     request<{ success: boolean; id: string }>(`/suppliers/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     }),
+
+  bulkImport: (suppliers: Record<string, any>[]): Promise<{ imported: number; skipped: number; suppliers: Supplier[] }> =>
+    request<{ imported: number; skipped: number; suppliers: Supplier[] }>('/suppliers/bulk-import', {
+      method: 'POST',
+      body: JSON.stringify({ suppliers }),
+    }),
+
+  bulkRollback: (supplierIds: string[]): Promise<{ deleted: number; notFound: number }> =>
+    request<{ deleted: number; notFound: number }>('/suppliers/bulk-rollback', {
+      method: 'POST',
+      body: JSON.stringify({ supplierIds }),
+    }),
+
+  archive: (id: string): Promise<Supplier> =>
+    request<Supplier>(`/suppliers/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ category: 'ארכיון', categoryColor: '#94a3b8' }),
+    }),
 };
 
 // ─── Supplier Sub-resources ──────────────────────
@@ -82,6 +100,8 @@ export interface SupplierProduct {
   price: number;
   description: string;
   unit: string;
+  images?: { id: string; url: string; name: string; path?: string }[];
+  notes?: string;
 }
 
 export interface SupplierDocument {
@@ -107,8 +127,34 @@ export const supplierProductsApi = {
     request<SupplierProduct[]>(`/suppliers/${encodeURIComponent(supplierId)}/products`),
   create: (supplierId: string, data: Partial<SupplierProduct>): Promise<SupplierProduct> =>
     request<SupplierProduct>(`/suppliers/${encodeURIComponent(supplierId)}/products`, { method: 'POST', body: JSON.stringify(data) }),
+  update: (supplierId: string, productId: string, data: Partial<SupplierProduct>): Promise<SupplierProduct> =>
+    request<SupplierProduct>(`/suppliers/${encodeURIComponent(supplierId)}/products/${encodeURIComponent(productId)}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (supplierId: string, productId: string): Promise<{ success: boolean; id: string }> =>
     request<{ success: boolean; id: string }>(`/suppliers/${encodeURIComponent(supplierId)}/products/${encodeURIComponent(productId)}`, { method: 'DELETE' }),
+  uploadImage: (supplierId: string, productId: string, file: File): Promise<SupplierProduct> => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            const base64 = reader.result as string;
+            const result = await request<SupplierProduct>(
+              `/suppliers/${encodeURIComponent(supplierId)}/products/${encodeURIComponent(productId)}/images`,
+              { method: 'POST', body: JSON.stringify({ base64, fileName: file.name, contentType: file.type }) }
+            );
+            resolve(result);
+          } catch (err) { reject(err); }
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      } catch (err) { reject(err); }
+    });
+  },
+  deleteImage: (supplierId: string, productId: string, imageId: string): Promise<SupplierProduct> =>
+    request<SupplierProduct>(
+      `/suppliers/${encodeURIComponent(supplierId)}/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(imageId)}`,
+      { method: 'DELETE' }
+    ),
 };
 
 export const supplierDocumentsApi = {
@@ -170,10 +216,13 @@ export interface QuoteItem {
   supplier: string;
   description: string;
   cost: number;
+  directPrice: number;
   sellingPrice: number;
   profitWeight: number;
   status: string; // 'approved' | 'modified' | 'pending'
   alternatives?: { id: string; name: string; description: string; costPerPerson: number; selected: boolean }[];
+  images?: { id: string; url: string; name: string }[];
+  notes?: string;
 }
 
 export interface TimelineEvent {
@@ -205,6 +254,35 @@ export const quoteItemsApi = {
     request<{ success: boolean; id: string }>(`/projects/${encodeURIComponent(projectId)}/items/${encodeURIComponent(itemId)}`, {
       method: 'DELETE',
     }),
+
+  uploadImage: (projectId: string, itemId: string, file: File): Promise<QuoteItem> => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            const base64 = reader.result as string;
+            const result = await request<QuoteItem>(
+              `/projects/${encodeURIComponent(projectId)}/items/${encodeURIComponent(itemId)}/images`,
+              {
+                method: 'POST',
+                body: JSON.stringify({ base64, fileName: file.name, contentType: file.type }),
+              }
+            );
+            resolve(result);
+          } catch (err) { reject(err); }
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      } catch (err) { reject(err); }
+    });
+  },
+
+  deleteImage: (projectId: string, itemId: string, imageId: string): Promise<QuoteItem> =>
+    request<QuoteItem>(
+      `/projects/${encodeURIComponent(projectId)}/items/${encodeURIComponent(itemId)}/images/${encodeURIComponent(imageId)}`,
+      { method: 'DELETE' }
+    ),
 };
 
 export const timelineApi = {
@@ -226,6 +304,57 @@ export const timelineApi = {
 export const publicApi = {
   quote: (id: string) => request<any>(`/public/quote/${encodeURIComponent(id)}`),
   approve: (id: string) => request<{ success: boolean }>(`/public/quote/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
+};
+
+// ─── Kanban Tasks ────────────────────────────────
+
+export interface KanbanTask {
+  id: string;
+  title: string;
+  description: string;
+  type: 'TASK' | 'FEATURE' | 'BUG';
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  status: 'ideas' | 'todo' | 'in-progress' | 'on-hold' | 'done';
+  feature: string;
+  estimate: string;
+  tags: string[];
+  createdAt: string;
+  version: 'V1' | 'V2';
+  attachments?: { name: string; type: string; dataUrl: string }[];
+}
+
+export const kanbanApi = {
+  list: (): Promise<KanbanTask[]> =>
+    request<KanbanTask[]>('/kanban/tasks'),
+
+  create: (task: Partial<KanbanTask>): Promise<KanbanTask> =>
+    request<KanbanTask>('/kanban/tasks', {
+      method: 'POST',
+      body: JSON.stringify(task),
+    }),
+
+  update: (id: string, data: Partial<KanbanTask>): Promise<KanbanTask> =>
+    request<KanbanTask>(`/kanban/tasks/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: string): Promise<{ success: boolean; id: string }> =>
+    request<{ success: boolean; id: string }>(`/kanban/tasks/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+
+  seed: (tasks: KanbanTask[], version: string): Promise<{ skipped: boolean; count?: number }> =>
+    request<{ skipped: boolean; count?: number }>('/kanban/seed', {
+      method: 'POST',
+      body: JSON.stringify({ tasks, version }),
+    }),
+
+  bulkUpdate: (tasks: KanbanTask[]): Promise<{ updated: number }> =>
+    request<{ updated: number }>('/kanban/tasks-bulk', {
+      method: 'PUT',
+      body: JSON.stringify({ tasks }),
+    }),
 };
 
 // ─── Seed ────────────────────────────────────────
@@ -259,5 +388,6 @@ export const api = {
   quoteItems: quoteItemsApi,
   timeline: timelineApi,
   public: publicApi,
+  kanban: kanbanApi,
   ensureSeeded,
 };

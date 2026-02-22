@@ -2,7 +2,7 @@ import { useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard, FolderOpen, Users, FileSpreadsheet,
   Wand2, ScanLine, Settings, Calendar, UserCircle,
-  FileText, ChevronLeft, Grape, Bus, UtensilsCrossed,
+  FileText, ChevronLeft, Grape, Bus, UtensilsCrossed, Archive,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -19,6 +19,7 @@ const routeMeta: Record<string, RouteInfo> = {
   'import': { label: 'ייבוא ספקים', icon: FileSpreadsheet, color: '#22c55e' },
   'classify': { label: 'אשף סיווג', icon: Wand2, color: '#ec4899' },
   'scan': { label: 'סריקת מוצרים', icon: ScanLine, color: '#14b8a6' },
+  'archive': { label: 'ארכיון', icon: Archive, color: '#94a3b8' },
   'settings': { label: 'הגדרות', icon: Settings, color: '#6b7280' },
   'calendar': { label: 'יומן', icon: Calendar, color: '#f59e0b' },
   'clients': { label: 'לקוחות', icon: UserCircle, color: '#06b6d4' },
@@ -60,13 +61,21 @@ export function Breadcrumbs() {
   ];
 
   let currentPath = '';
-  segments.forEach((segment) => {
+  segments.forEach((segment, idx) => {
     currentPath += `/${segment}`;
     const meta = routeMeta[segment] || entityMeta[segment];
     if (meta) {
       items.push({ label: meta.label, path: currentPath, icon: meta.icon, color: meta.color });
     } else {
-      items.push({ label: `#${segment}`, path: currentPath, icon: FileText, color: '#8d785e' });
+      // For dynamic IDs under known parents, show a friendly label
+      const parentSegment = idx > 0 ? segments[idx - 1] : '';
+      if (parentSegment === 'suppliers') {
+        items.push({ label: 'פרטי ספק', path: currentPath, icon: Users, color: '#8b5cf6' });
+      } else if (parentSegment === 'projects') {
+        items.push({ label: 'פרטי פרויקט', path: currentPath, icon: FolderOpen, color: '#3b82f6' });
+      } else {
+        items.push({ label: `#${segment}`, path: currentPath, icon: FileText, color: '#8d785e' });
+      }
     }
   });
 

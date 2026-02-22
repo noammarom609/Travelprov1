@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { useForm } from 'react-hook-form';
 import {
   Search, Plus, Filter, Eye, Edit2, Copy, Star, CheckCircle,
-  AlertTriangle, Clock, X, ChevronLeft, ChevronRight, Users, Loader2, Trash2
+  AlertTriangle, Clock, X, ChevronLeft, ChevronRight, Users, Loader2, Archive
 } from 'lucide-react';
 import type { Supplier } from './data';
 import { suppliersApi } from './api';
@@ -84,18 +84,10 @@ export function SupplierBank() {
     }
   };
 
-  const handleDeleteSupplier = async (id: string, name: string) => {
-    try {
-      await suppliersApi.delete(id);
-      appToast.success(`הספק "${name}" נמחק בהצלחה`);
-      fetchSuppliers();
-    } catch (err) {
-      console.error('[SupplierBank] Failed to delete supplier:', err);
-      appToast.error('שגיאה במחיקת ספק', String(err));
-    }
-  };
 
   const filtered = suppliers.filter(s => {
+    // Filter out archived suppliers
+    if (s.category === 'ארכיון') return false;
     const matchesSearch = !search || s.name.includes(search) || s.category.includes(search) || s.region.includes(search);
     const matchesCategory = selectedCategory === 'כל הקטגוריות' || s.category === selectedCategory;
     const matchesRegion = selectedRegion === 'כל הארץ' || s.region === selectedRegion;
@@ -114,10 +106,12 @@ export function SupplierBank() {
     setCurrentPage(1);
   };
 
-  const totalSuppliers = suppliers.length;
-  const verifiedCount = suppliers.filter(s => s.verificationStatus === 'verified').length;
-  const pendingCount = suppliers.filter(s => s.verificationStatus === 'pending').length;
-  const docsIssues = suppliers.filter(s => s.notes !== '-').length;
+  const activeSuppliers = suppliers.filter(s => s.category !== 'ארכיון');
+  const archivedCount = suppliers.filter(s => s.category === 'ארכיון').length;
+  const totalSuppliers = activeSuppliers.length;
+  const verifiedCount = activeSuppliers.filter(s => s.verificationStatus === 'verified').length;
+  const pendingCount = activeSuppliers.filter(s => s.verificationStatus === 'pending').length;
+  const docsIssues = activeSuppliers.filter(s => s.notes !== '-').length;
 
   return (
     <div className="p-4 lg:p-6 mx-auto font-['Assistant',sans-serif]" dir="rtl">
@@ -129,14 +123,26 @@ export function SupplierBank() {
           </div>
           <h1 className="text-[26px] text-[#181510]" style={{ fontWeight: 700 }}>בנק ספקים</h1>
         </div>
-        <button
-          onClick={() => setShowAddSupplier(true)}
-          className="flex items-center gap-2 bg-[#ff8c00] hover:bg-[#e67e00] text-white px-4 py-2.5 rounded-xl shadow-lg shadow-[#ff8c00]/20 transition-all text-[14px]"
-          style={{ fontWeight: 600 }}
-        >
-          <Plus size={16} />
-          הוספת ספק חדש
-        </button>
+        <div className="flex items-center gap-3">
+          {archivedCount > 0 && (
+            <button
+              onClick={() => navigate('/suppliers/archive')}
+              className="flex items-center gap-2 border border-[#e7e1da] text-[#8d785e] hover:text-[#181510] hover:border-[#b8a990] px-4 py-2.5 rounded-xl transition-all text-[14px]"
+              style={{ fontWeight: 600 }}
+            >
+              <Archive size={16} />
+              ארכיון ({archivedCount})
+            </button>
+          )}
+          <button
+            onClick={() => setShowAddSupplier(true)}
+            className="flex items-center gap-2 bg-[#ff8c00] hover:bg-[#e67e00] text-white px-4 py-2.5 rounded-xl shadow-lg shadow-[#ff8c00]/20 transition-all text-[14px]"
+            style={{ fontWeight: 600 }}
+          >
+            <Plus size={16} />
+            הוספת ספק חדש
+          </button>
+        </div>
       </div>
 
       {/* Search bar */}
@@ -281,7 +287,6 @@ export function SupplierBank() {
                           appToast.info('הספק הועתק', `פרטי "${supplier.name}" הועתקו ללוח`);
                         }).catch(() => appToast.info('הספק הועתק', 'פרטי הספק הועתקו ללוח'));
                       }} className="p-1.5 text-[#8d785e] hover:text-[#181510] hover:bg-[#ece8e3] rounded-lg transition-all"><Copy size={15} /></button>
-                      <button onClick={() => handleDeleteSupplier(supplier.id, supplier.name)} className="p-1.5 text-[#8d785e] hover:text-[#ff8c00] hover:bg-[#ff8c00]/10 rounded-lg transition-all"><Trash2 size={15} /></button>
                     </div>
                   </td>
                 </tr>
