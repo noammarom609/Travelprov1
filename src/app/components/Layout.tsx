@@ -7,8 +7,8 @@ import {
 } from 'lucide-react';
 import { GlobalSearch } from './GlobalSearch';
 import { NotificationsPanel } from './NotificationsPanel';
-import imgAvatar from "figma:asset/3e33ffb968ecb98f421cfb68a6d08fed3e8bf007.png";
-import imgLogo from "figma:asset/b655d2164f14a54b258c6a8a069f10a88a1c4640.png";
+import imgAvatar from "../../assets/3e33ffb968ecb98f421cfb68a6d08fed3e8bf007.png";
+import imgLogo from "../../assets/b655d2164f14a54b258c6a8a069f10a88a1c4640.png";
 import { Breadcrumbs } from './Breadcrumbs';
 import { appToast } from './AppToast';
 import { projectsApi } from './api';
