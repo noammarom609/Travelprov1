@@ -6,7 +6,8 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Loader2, LogIn, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import imgLogo from "figma:asset/b655d2164f14a54b258c6a8a069f10a88a1c4640.png";
+// Placeholder for local dev (figma:asset only works in Figma plugin)
+const imgLogo = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="8" fill="%23ff8c00"/><text x="20" y="26" text-anchor="middle" fill="white" font-size="12" font-family="sans-serif">יום כיף</text></svg>');
 import { useAuth } from './AuthContext';
 import { FormField, rules } from './FormField';
 
