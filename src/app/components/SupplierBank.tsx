@@ -10,6 +10,8 @@ import { suppliersApi } from './api';
 import { appToast } from './AppToast';
 import { SupplierMap } from './SupplierMap';
 import { FormField, FormSelect, rules } from './FormField';
+import { computeAutoNotesFromSummary, noteLevelStyles } from './supplierNotes';
+import type { SupplierSummary } from './supplierNotes';
 
 interface NewSupplierForm {
   name: string;
@@ -34,6 +36,7 @@ export function SupplierBank() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [summaries, setSummaries] = useState<Record<string, SupplierSummary>>({});
 
   // ─── New supplier form state ───
   const [saving, setSaving] = useState(false);
@@ -49,8 +52,15 @@ export function SupplierBank() {
     try {
       setLoading(true);
       setError(null);
-      const data = await suppliersApi.list();
+      const [data, summaryData] = await Promise.all([
+        suppliersApi.list(),
+        suppliersApi.summaries().catch(err => {
+          console.warn('[SupplierBank] Failed to load summaries:', err);
+          return {} as Record<string, SupplierSummary>;
+        }),
+      ]);
       setSuppliers(data);
+      setSummaries(summaryData);
     } catch (err) {
       console.error('[SupplierBank] Failed to load suppliers:', err);
       setError('שגיאה בטעינת ספקים');
@@ -111,7 +121,10 @@ export function SupplierBank() {
   const totalSuppliers = activeSuppliers.length;
   const verifiedCount = activeSuppliers.filter(s => s.verificationStatus === 'verified').length;
   const pendingCount = activeSuppliers.filter(s => s.verificationStatus === 'pending').length;
-  const docsIssues = activeSuppliers.filter(s => s.notes !== '-').length;
+  const docsIssues = activeSuppliers.filter(s => {
+    const notes = computeAutoNotesFromSummary(s, summaries[s.id]);
+    return notes.some(n => n.level === 'critical' || n.level === 'warning');
+  }).length;
 
   return (
     <div className="p-4 lg:p-6 mx-auto font-['Assistant',sans-serif]" dir="rtl">
@@ -269,13 +282,24 @@ export function SupplierBank() {
                       </span>
                     )}
                   </td>
-                  <td className="p-3 text-[12px] text-[#8d785e]">
-                    {supplier.notes !== '-' && (
-                      <span className="text-red-500 flex items-center gap-1">
-                        <AlertTriangle size={12} /> {supplier.notes}
-                      </span>
-                    )}
-                    {supplier.notes === '-' && '-'}
+                  <td className="p-3 text-[12px]">
+                    {(() => {
+                      const notes = computeAutoNotesFromSummary(supplier, summaries[supplier.id]);
+                      if (notes.length === 0) return <span className="text-[#b8a990]">-</span>;
+                      const first = notes[0];
+                      const styles = noteLevelStyles(first.level);
+                      return (
+                        <div className="flex items-center gap-1.5">
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${styles.dot}`} />
+                          <span className={`${styles.text} leading-tight`} style={{ fontWeight: 500 }}>{first.text}</span>
+                          {notes.length > 1 && (
+                            <span className="text-[10px] text-[#b8a990] bg-[#f5f3f0] px-1.5 py-0.5 rounded-full shrink-0" style={{ fontWeight: 600 }}>
+                              +{notes.length - 1}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="p-3">
                     <div className="flex items-center gap-1">

@@ -5,6 +5,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
 const app = new Hono();
+console.log("[Server] TravelPro Hono server starting...");
 app.use("*", logger(console.log));
 app.use(
   "/*",
@@ -125,6 +126,74 @@ app.post(`${PREFIX}/seed`, async (c) => {
 app.get(`${PREFIX}/suppliers`, async (c) => {
   try { return c.json({ data: await kv.getByPrefix("supplier:") }); }
   catch (err) { return c.json({ error: `Failed to list suppliers: ${err}` }, 500); }
+});
+
+// ─── SUPPLIERS SUMMARIES (batch notes data) ──────
+app.get(`${PREFIX}/suppliers/summaries`, async (c) => {
+  try {
+    const [allDocs, allContacts, allProducts] = await Promise.all([
+      kv.getByPrefix("supplier_document:"),
+      kv.getByPrefix("supplier_contact:"),
+      kv.getByPrefix("supplier_product:"),
+    ]);
+
+    const REQUIRED_DOCS = ["רישיון עסק", "תעודת כשרות", "ביטוח צד ג'"];
+    const now = new Date();
+
+    const summaries: Record<string, any> = {};
+
+    // Group by supplierId
+    const docsBySupplierId: Record<string, any[]> = {};
+    const contactsBySupplierId: Record<string, any[]> = {};
+    const productsBySupplierId: Record<string, any[]> = {};
+
+    for (const doc of allDocs) { const sid = (doc as any).supplierId; if (!docsBySupplierId[sid]) docsBySupplierId[sid] = []; docsBySupplierId[sid].push(doc); }
+    for (const c of allContacts) { const sid = (c as any).supplierId; if (!contactsBySupplierId[sid]) contactsBySupplierId[sid] = []; contactsBySupplierId[sid].push(c); }
+    for (const p of allProducts) { const sid = (p as any).supplierId; if (!productsBySupplierId[sid]) productsBySupplierId[sid] = []; productsBySupplierId[sid].push(p); }
+
+    // Get all supplier IDs
+    const allSuppliers = await kv.getByPrefix("supplier:");
+    for (const supplier of allSuppliers) {
+      const sid = (supplier as any).id;
+      const docs = docsBySupplierId[sid] || [];
+      const contacts = contactsBySupplierId[sid] || [];
+      const products = productsBySupplierId[sid] || [];
+
+      let docsExpired = 0;
+      let docsWarning = 0;
+      let insuranceExpired = false;
+      const docNames = new Set(docs.map((d: any) => d.name));
+      const docsMissing = REQUIRED_DOCS.filter(name => !docNames.has(name));
+
+      for (const doc of docs) {
+        const d = doc as any;
+        if (!d.expiry) { docsExpired++; continue; }
+        const exp = new Date(d.expiry);
+        if (exp < now) {
+          docsExpired++;
+          if (d.name === "ביטוח צד ג'") insuranceExpired = true;
+        } else {
+          const diff = exp.getTime() - now.getTime();
+          if (diff / (1000 * 60 * 60 * 24) < 60) docsWarning++;
+        }
+      }
+
+      summaries[sid] = {
+        docsExpired,
+        docsWarning,
+        docsMissing: docsMissing.length,
+        docsMissingNames: docsMissing,
+        insuranceExpired,
+        contactsCount: contacts.length,
+        productsCount: products.length,
+      };
+    }
+
+    return c.json({ data: summaries });
+  } catch (err) {
+    console.log(`[Suppliers] Summaries error: ${err}`);
+    return c.json({ error: `Failed to get supplier summaries: ${err}` }, 500);
+  }
 });
 
 app.get(`${PREFIX}/suppliers/:id`, async (c) => {

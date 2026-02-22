@@ -75,8 +75,8 @@ const FEATURE_OPTIONS = [
   'מערכת תמונות ואחסון',
 ];
 
-const STORAGE_KEY = 'travelpro-kanban-v8';
-const KANBAN_SEED_VERSION = 'v8'; // Bump to seed new INITIAL_TASKS to server
+const STORAGE_KEY = 'travelpro-kanban-v9';
+const KANBAN_SEED_VERSION = 'v9'; // Bump to seed new INITIAL_TASKS to server
 
 const VERSION_TABS: { id: Version; label: string; subtitle: string; color: string }[] = [
   { id: 'V1', label: 'V1', subtitle: 'MVP — 9 מסכים', color: '#ff8c00' },
@@ -331,6 +331,38 @@ const INITIAL_TASKS: Task[] = [
     id: 'd24', title: 'שדרוג Breadcrumbs — route ארכיון + labels דינמיים',
     description: 'הוספת route "ארכיון" ל-routeMeta עם אייקון Archive, וכן שיפור ה-fallback למזהי ספקים/פרויקטים דינמיים — במקום להציג #hash לא קריא, מוצגות תוויות ידידותיות: "פרטי ספק" לנתיבים תחת /suppliers/, "פרטי פרויקט" תחת /projects/.',
     type: 'TASK', priority: 'MEDIUM', status: 'done', feature: 'Layout וניווט', estimate: '30m', tags: ['Breadcrumbs', 'UX', 'ניווט'], createdAt: '2026-02-21', version: 'V1',
+  },
+
+  // ──── V1 הושלם — עריכת ספק + הערות אוטומטיות + תיקוני באגים (22/02/2026) ────
+  {
+    id: 'd25', title: 'טופס עריכת ספק מקיף — מודאל מלא',
+    description: 'כפתור "עריכה" כתום עם אייקון עיפרון ליד שם הספק בהדר, שפותח מודאל טופס מקיף (שם, טלפון, קטגוריה, אזור, דירוג, סטטוס אימות, הערות) עם שמירה ל-Supabase דרך suppliersApi.update(). הטופס משתמש ב-react-hook-form עם FormField, FormSelect ו-FormTextarea הקיימים.',
+    type: 'FEATURE', priority: 'HIGH', status: 'done', feature: 'כרטיס ספק', estimate: '2h', tags: ['כרטיס ספק', 'CRUD', 'react-hook-form'], createdAt: '2026-02-22', version: 'V1',
+  },
+  {
+    id: 'd26', title: 'מערכת הערות אוטומטיות לספקים — Engine + UI',
+    description: 'מנגנון הערות אוטומטיות מלא: endpoint GET /suppliers/summaries בשרת Hono, יוטיליטי supplierNotes.ts עם 9 סוגי הערות לפי סדר עדיפות (ביטוח פג, מסמכים קרובים לפקיעה, אימות ממתין, מסמכים חסרים, אין אנשי קשר, חסר טלפון, אין מוצרים), צבעים לפי חומרה (אדום/כתום/צהוב/כחול/אפור), וחישוב גם מ-summary וגם מ-data מלא.',
+    type: 'FEATURE', priority: 'HIGH', status: 'done', feature: 'כרטיס ספק', estimate: '4h', tags: ['כרטיס ספק', 'בנק ספקים', 'Backend', 'UX'], createdAt: '2026-02-22', version: 'V1',
+  },
+  {
+    id: 'd27', title: 'הערות אוטומטיות — הצגה ב-SupplierBank + SupplierDetail',
+    description: 'Badge-ים צבעוניים קומפקטיים (pills עם אייקון וטקסט) מופיעים: בבנק ספקים ליד כל ספק, ובכרטיס ספק מתחת לפרטי הספק בתצוגה אנכית (אחד מתחת לשני). כל דבר "חסר" (מסמכים, אנשי קשר, טלפון, מוצרים) מופיע באדום (critical). הערה ידנית משולבת כ-badge צהוב באותה שורה.',
+    type: 'FEATURE', priority: 'MEDIUM', status: 'done', feature: 'כרטיס ספק', estimate: '2h', tags: ['כרטיס ספק', 'בנק ספקים', 'UX'], createdAt: '2026-02-22', version: 'V1',
+  },
+  {
+    id: 'd28', title: 'הסרת SupplierComplianceCard — החלפה ב-badges',
+    description: 'מחיקת הקומפוננט SupplierComplianceCard.tsx (כרטיס תקינות צף עם donut chart, ציון, expand/collapse). הוחלף במערכת ה-badges הקומפקטית של ההערות האוטומטיות — קלה יותר, ברורה יותר, ואינפורמטיבית יותר.',
+    type: 'TASK', priority: 'MEDIUM', status: 'done', feature: 'כרטיס ספק', estimate: '30m', tags: ['כרטיס ספק', 'UX', 'ניקוי קוד'], createdAt: '2026-02-22', version: 'V1',
+  },
+  {
+    id: 'bug1', title: 'תיקון Leaflet _leaflet_pos crash — invalidateSize',
+    description: 'שגיאת TypeError: Cannot read properties of undefined (reading \'_leaflet_pos\') ב-SupplierLocationMap. הבעיה: setTimeout עם map.invalidateSize() נורה אחרי שהמפה כבר הוסרה מה-DOM (unmount). תוקן עם guard שבודק שה-map וה-container עדיין קיימים, try/catch, וביטול ה-timeout ב-cleanup.',
+    type: 'BUG', priority: 'HIGH', status: 'done', feature: 'כרטיס ספק', estimate: '15m', tags: ['כרטיס ספק', 'Leaflet', 'באג'], createdAt: '2026-02-22', version: 'V1',
+  },
+  {
+    id: 'd29', title: 'הסרת cursor-pointer מכרטיסי רכיבים בעורך הצעות',
+    description: 'שם הספק/רכיב בכרטיסים בעורך הצעות המחיר הפך לטקסט רגיל — הוסרו cursor-pointer, onClick ואייקון Pencil כדי למנוע כניסה לעריכת פרטי ספק מתוך הפרויקט. כפתור "עריכה" הכתום הנפרד נשאר לעריכת הרכיב עצמו.',
+    type: 'TASK', priority: 'MEDIUM', status: 'done', feature: 'עורך הצעות מחיר', estimate: '15m', tags: ['עורך הצעות', 'UX'], createdAt: '2026-02-22', version: 'V1',
   },
 
   // ════════════════════════════════════════

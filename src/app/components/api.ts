@@ -45,6 +45,8 @@ export const suppliersApi = {
 
   get: (id: string): Promise<Supplier> => request<Supplier>(`/suppliers/${encodeURIComponent(id)}`),
 
+  summaries: (): Promise<Record<string, any>> => request<Record<string, any>>('/suppliers/summaries'),
+
   create: (data: Partial<Supplier>): Promise<Supplier> =>
     request<Supplier>('/suppliers', {
       method: 'POST',

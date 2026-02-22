@@ -7,9 +7,8 @@ import {
 } from 'lucide-react';
 import { GlobalSearch } from './GlobalSearch';
 import { NotificationsPanel } from './NotificationsPanel';
-// Placeholders for local dev (figma:asset only works in Figma plugin)
-const imgAvatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="%23ff8c00"/><text x="20" y="26" text-anchor="middle" fill="white" font-size="16" font-family="sans-serif">משתמש</text></svg>');
-const imgLogo = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="8" fill="%23ff8c00"/><text x="20" y="26" text-anchor="middle" fill="white" font-size="12" font-family="sans-serif">יום כיף</text></svg>');
+import imgAvatar from "figma:asset/3e33ffb968ecb98f421cfb68a6d08fed3e8bf007.png";
+import imgLogo from "figma:asset/b655d2164f14a54b258c6a8a069f10a88a1c4640.png";
 import { Breadcrumbs } from './Breadcrumbs';
 import { appToast } from './AppToast';
 import { projectsApi } from './api';

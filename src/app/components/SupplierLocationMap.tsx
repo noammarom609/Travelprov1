@@ -95,10 +95,19 @@ export function SupplierLocationMap({ supplier, onUpdate }: Props) {
       markerRef.current = marker;
     }
 
-    // Invalidate size after mount
-    setTimeout(() => map.invalidateSize(), 100);
+    // Invalidate size after mount (guard against unmount)
+    const resizeTimer = setTimeout(() => {
+      if (mapRef.current && mapContainerRef.current) {
+        try {
+          mapRef.current.invalidateSize();
+        } catch (_) {
+          // map may have been removed
+        }
+      }
+    }, 200);
 
     return () => {
+      clearTimeout(resizeTimer);
       map.remove();
       mapRef.current = null;
       markerRef.current = null;

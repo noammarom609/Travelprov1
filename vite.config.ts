@@ -15,10 +15,35 @@ export default defineConfig({
       // Alias @ to the src directory
       '@': path.resolve(__dirname, './src'),
     },
-    dedupe: ['react', 'react-dom', 'react-router'],
+    dedupe: [
+      'react',
+      'react-dom',
+      'react-router',
+      '@supabase/supabase-js',
+      'motion',
+      'sonner',
+      'react-hook-form',
+      'recharts',
+      'react-dnd',
+      'react-dnd-html5-backend',
+      'lucide-react',
+    ],
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router'],
+    include: [
+      'react',
+      'react-dom',
+      'react-router',
+      '@supabase/supabase-js',
+      'motion',
+      'motion/react',
+      'sonner',
+      'react-hook-form',
+      'recharts',
+      'react-dnd',
+      'react-dnd-html5-backend',
+      'lucide-react',
+    ],
   },
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.

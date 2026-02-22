@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useForm } from 'react-hook-form';
 import {
@@ -11,9 +11,12 @@ import type { Supplier } from './data';
 import { suppliersApi, supplierContactsApi, supplierProductsApi, supplierDocumentsApi } from './api';
 import type { SupplierContact, SupplierProduct, SupplierDocument } from './api';
 import { FormField, rules } from './FormField';
+import { FormSelect, FormTextarea } from './FormField';
 import { appToast } from './AppToast';
 import { ProductEditor } from './ProductEditor';
 import { SupplierLocationMap } from './SupplierLocationMap';
+import { computeAutoNotes, noteLevelStyles } from './supplierNotes';
+import type { AutoNote } from './supplierNotes';
 
 const VINEYARD_IMG = 'https://images.unsplash.com/photo-1762330465953-75478d918896?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx2aW5leWFyZCUyMGdyYXBlJTIwaGlsbHNpZGUlMjBncmVlbnxlbnwxfHx8fDE3NzE0NjgyNDJ8MA&ixlib=rb-4.1.0&q=80&w=1080';
 
@@ -28,6 +31,21 @@ const statusLabel: Record<string, string> = { verified: 'מאומת', pending: '
 
 interface AddContactForm { contactName: string; contactRole: string; contactPhone: string; contactEmail: string; }
 interface AddProductForm { productName: string; productPrice: string; productDescription: string; productUnit: string; }
+interface EditSupplierForm { name: string; phone: string; category: string; categoryColor: string; region: string; rating: string; verificationStatus: string; notes: string; icon: string; }
+
+const CATEGORY_OPTIONS = [
+  { value: 'תחבורה', color: '#3b82f6', icon: '🚌' },
+  { value: 'מזון', color: '#22c55e', icon: '🍽️' },
+  { value: 'אטרקציות', color: '#a855f7', icon: '🎯' },
+  { value: 'לינה', color: '#ec4899', icon: '🏨' },
+  { value: 'אולמות וגנים', color: '#f97316', icon: '🏛️' },
+  { value: 'צילום', color: '#06b6d4', icon: '📸' },
+  { value: 'מוזיקה', color: '#8b5cf6', icon: '🎵' },
+  { value: 'ציוד', color: '#64748b', icon: '🔧' },
+  { value: 'כללי', color: '#8d785e', icon: '📦' },
+];
+
+const REGION_OPTIONS = ['צפון', 'מרכז', 'דרום', 'ירושלים', 'גולן', 'שפלה', 'שרון', 'נגב', 'אילת', 'יהודה ושומרון'];
 
 export function SupplierDetail() {
   const navigate = useNavigate();
@@ -53,8 +71,13 @@ export function SupplierDetail() {
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const [archiving, setArchiving] = useState(false);
 
+  // Edit supplier
+  const [showEditSupplier, setShowEditSupplier] = useState(false);
+  const [savingSupplier, setSavingSupplier] = useState(false);
+
   const contactForm = useForm<AddContactForm>({ mode: 'onChange', defaultValues: { contactName: '', contactRole: '', contactPhone: '', contactEmail: '' } });
   const productForm = useForm<AddProductForm>({ mode: 'onChange', defaultValues: { productName: '', productPrice: '', productDescription: '', productUnit: 'אדם' } });
+  const editSupplierForm = useForm<EditSupplierForm>({ mode: 'onChange' });
 
   // ─── Load all data ───
   useEffect(() => {
@@ -221,7 +244,7 @@ export function SupplierDetail() {
       )}
 
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(isArchived ? '/suppliers/archive' : '/suppliers')} className="text-[#8d785e] hover:text-[#181510] transition-colors">
             <ArrowRight size={20} />
@@ -232,6 +255,26 @@ export function SupplierDetail() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-[24px] text-[#181510]" style={{ fontWeight: 700 }}>{supplier.name}</h1>
+              <button
+                onClick={() => {
+                  editSupplierForm.reset({
+                    name: supplier.name,
+                    phone: supplier.phone || '',
+                    category: supplier.category,
+                    categoryColor: supplier.categoryColor,
+                    region: supplier.region,
+                    rating: String(supplier.rating),
+                    verificationStatus: supplier.verificationStatus,
+                    notes: supplier.notes || '',
+                    icon: supplier.icon || '',
+                  });
+                  setShowEditSupplier(true);
+                }}
+                className="flex items-center gap-1 text-[12px] text-[#ff8c00] hover:text-[#e67e00] bg-[#ff8c00]/10 hover:bg-[#ff8c00]/20 px-2.5 py-1 rounded-lg transition-all"
+                style={{ fontWeight: 600 }}
+              >
+                <Pencil size={12} /> עריכה
+              </button>
               <span className={`flex items-center gap-1 text-[12px] px-2 py-0.5 rounded-full ${verifBg}`} style={{ fontWeight: 600 }}>
                 <VerifIcon size={12} /> {statusLabel[supplier.verificationStatus]}
               </span>
@@ -243,26 +286,58 @@ export function SupplierDetail() {
           </div>
         </div>
         {!isArchived && (
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowArchiveConfirm(true)}
-              className="flex items-center gap-1.5 text-[13px] text-[#8d785e] hover:text-[#181510] border border-[#e7e1da] hover:border-[#b8a990] px-3 py-2 rounded-xl transition-all"
-              style={{ fontWeight: 500 }}
-            >
-              <Archive size={15} />
-              העבר לארכיון
-            </button>
-          </div>
+          <button
+            onClick={() => setShowArchiveConfirm(true)}
+            className="flex items-center gap-1.5 text-[13px] text-[#8d785e] hover:text-[#181510] border border-[#e7e1da] hover:border-[#b8a990] px-3 py-2 rounded-xl transition-all"
+            style={{ fontWeight: 500 }}
+          >
+            <Archive size={15} />
+            העבר לארכיון
+          </button>
         )}
       </div>
 
-      {/* Notes alert */}
-      {supplier.notes && supplier.notes !== '-' && (
-        <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2.5 mb-5">
-          <AlertTriangle size={14} className="text-yellow-600 shrink-0" />
-          <span className="text-[13px] text-yellow-800" style={{ fontWeight: 500 }}>הערה: {supplier.notes}</span>
-        </div>
-      )}
+      {/* Auto-note badges + manual note — below supplier details */}
+      {(() => {
+        const autoNotes = computeAutoNotes(supplier, documents, contacts, products);
+        const hasManual = supplier.notes && supplier.notes !== '-';
+        if (autoNotes.length === 0 && !hasManual) return null;
+
+        const NOTE_ICONS: Record<string, React.ElementType> = {
+          'shield-alert': AlertTriangle,
+          'file-warning': FileText,
+          'alert-triangle': AlertTriangle,
+          'clock': Clock,
+          'file-x': FileText,
+          'user-x': Users,
+          'phone-off': Phone,
+          'package-x': Package,
+        };
+
+        return (
+          <div className="flex flex-col items-start gap-1.5 mb-5">
+            {autoNotes.map(note => {
+              const styles = noteLevelStyles(note.level);
+              const NoteIcon = NOTE_ICONS[note.icon] || AlertTriangle;
+              return (
+                <span
+                  key={note.id}
+                  className={`inline-flex items-center gap-1.5 ${styles.bg} border ${styles.border} rounded-full px-2.5 py-1`}
+                >
+                  <NoteIcon size={12} className={styles.icon} />
+                  <span className={`text-[11px] ${styles.text} whitespace-nowrap`} style={{ fontWeight: 500 }}>{note.text}</span>
+                </span>
+              );
+            })}
+            {hasManual && (
+              <span className="inline-flex items-center gap-1.5 bg-yellow-50 border border-yellow-200 rounded-full px-2.5 py-1">
+                <AlertTriangle size={12} className="text-yellow-600" />
+                <span className="text-[11px] text-yellow-800 whitespace-nowrap" style={{ fontWeight: 500 }}>הערה: {supplier.notes}</span>
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 bg-[#ece8e3] rounded-lg p-1 overflow-x-auto">
@@ -825,6 +900,155 @@ export function SupplierDetail() {
                 <button type="button" onClick={() => { setShowArchiveConfirm(false); }} className="px-5 border border-[#e7e1da] rounded-xl hover:bg-[#f5f3f0] transition-colors">ביטול</button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Edit Supplier Modal ═══ */}
+      {showEditSupplier && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowEditSupplier(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" dir="rtl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#ff8c00]/10 flex items-center justify-center">
+                  <Pencil size={18} className="text-[#ff8c00]" />
+                </div>
+                <div>
+                  <h3 className="text-[20px] text-[#181510]" style={{ fontWeight: 700 }}>עריכת פרטי ספק</h3>
+                  <p className="text-[12px] text-[#8d785e]">עדכון פרטים בסיסיים של הספק</p>
+                </div>
+              </div>
+              <button onClick={() => setShowEditSupplier(false)} className="text-[#8d785e] hover:text-[#181510] transition-colors"><X size={20} /></button>
+            </div>
+            <form
+              onSubmit={editSupplierForm.handleSubmit(async (data: EditSupplierForm) => {
+                if (!id) return;
+                try {
+                  setSavingSupplier(true);
+                  const catOption = CATEGORY_OPTIONS.find(c => c.value === data.category);
+                  const updated = await suppliersApi.update(id, {
+                    name: data.name.trim(),
+                    phone: data.phone.trim(),
+                    category: data.category,
+                    categoryColor: catOption?.color || data.categoryColor,
+                    region: data.region,
+                    rating: parseFloat(data.rating) || supplier!.rating,
+                    verificationStatus: data.verificationStatus as Supplier['verificationStatus'],
+                    notes: data.notes.trim() || '-',
+                    icon: catOption?.icon || data.icon,
+                  });
+                  setSupplier(updated);
+                  setShowEditSupplier(false);
+                  appToast.success('פרטי ספק עודכנו', `${data.name} נשמר בהצלחה`);
+                } catch (err) {
+                  console.error('[SupplierDetail] update supplier error:', err);
+                  appToast.error('שגיאה בעדכון פרטי ספק');
+                } finally { setSavingSupplier(false); }
+              })}
+              className="space-y-4"
+            >
+              <FormField
+                label="שם הספק"
+                placeholder="שם הספק"
+                required
+                error={editSupplierForm.formState.errors.name}
+                isDirty={editSupplierForm.formState.dirtyFields.name}
+                {...editSupplierForm.register('name', rules.requiredMin('שם ספק', 2))}
+              />
+
+              <FormField
+                label="טלפון"
+                placeholder="מספר טלפון"
+                error={editSupplierForm.formState.errors.phone}
+                isDirty={editSupplierForm.formState.dirtyFields.phone}
+                {...editSupplierForm.register('phone')}
+              />
+
+              <div className="grid grid-cols-2 gap-3">
+                <FormSelect
+                  label="קטגוריה"
+                  error={editSupplierForm.formState.errors.category}
+                  isDirty={editSupplierForm.formState.dirtyFields.category}
+                  {...editSupplierForm.register('category', { required: 'קטגוריה היא שדה חובה' })}
+                >
+                  {CATEGORY_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.icon} {opt.value}</option>
+                  ))}
+                </FormSelect>
+
+                <FormSelect
+                  label="אזור"
+                  error={editSupplierForm.formState.errors.region}
+                  isDirty={editSupplierForm.formState.dirtyFields.region}
+                  {...editSupplierForm.register('region', { required: 'אזור הוא שדה חובה' })}
+                >
+                  {REGION_OPTIONS.map(r => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </FormSelect>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[13px] text-[#8d785e] mb-1 block" style={{ fontWeight: 600 }}>דירוג</label>
+                  <div className="flex items-center gap-1 bg-white border border-[#e7e1da] rounded-lg px-3 py-2.5">
+                    {[1, 2, 3, 4, 5].map(star => {
+                      const currentRating = parseFloat(editSupplierForm.watch('rating') || '0');
+                      return (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => editSupplierForm.setValue('rating', String(star), { shouldDirty: true })}
+                          className={`text-[22px] transition-colors ${star <= currentRating ? 'text-[#ff8c00]' : 'text-[#ddd6cb] hover:text-[#ff8c00]/50'}`}
+                        >
+                          ★
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <FormSelect
+                  label="סטטוס אימות"
+                  error={editSupplierForm.formState.errors.verificationStatus}
+                  isDirty={editSupplierForm.formState.dirtyFields.verificationStatus}
+                  {...editSupplierForm.register('verificationStatus')}
+                >
+                  <option value="verified">מאומת</option>
+                  <option value="pending">ממתין לאימות</option>
+                  <option value="unverified">לא מאומת</option>
+                </FormSelect>
+              </div>
+
+              <FormTextarea
+                label="הערות"
+                placeholder="הערות נוספות..."
+                rows={3}
+                error={editSupplierForm.formState.errors.notes}
+                isDirty={editSupplierForm.formState.dirtyFields.notes}
+                {...editSupplierForm.register('notes')}
+              />
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={savingSupplier || !editSupplierForm.formState.isValid}
+                  className="flex-1 bg-[#ff8c00] hover:bg-[#e67e00] disabled:opacity-50 text-white py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
+                  style={{ fontWeight: 600 }}
+                >
+                  {savingSupplier ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  {savingSupplier ? 'שומר...' : 'שמור שינויים'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEditSupplier(false)}
+                  className="px-5 border border-[#e7e1da] rounded-xl hover:bg-[#f5f3f0] transition-colors text-[14px] text-[#8d785e]"
+                  style={{ fontWeight: 500 }}
+                >
+                  ביטול
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
