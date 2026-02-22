@@ -4,8 +4,11 @@ import {
   Plus, X, Search, Filter, GripVertical,
   AlertCircle, Calendar, Paperclip, ImagePlus, FileText, Trash2,
   Bug, Sparkles, Wrench, LayoutGrid, Layers,
-  ChevronRight, ChevronLeft, Download, ZoomIn, Eye
+  ChevronRight, ChevronLeft, Download, ZoomIn, Eye,
+  Cloud, CloudOff, RefreshCw, Loader2,
+  Lightbulb, ArrowLeftCircle, MoveRight
 } from 'lucide-react';
+import { kanbanApi } from './api';
 
 // ═══════════════ TYPES ═══════════════
 
@@ -38,7 +41,6 @@ interface Column {
 // ═══════════════ CONSTANTS ═══════════════
 
 const COLUMNS: Column[] = [
-  { id: 'ideas', label: 'בנק הצעות', dotColor: '#a78bfa' },
   { id: 'todo', label: 'לביצוע', dotColor: '#8d785e' },
   { id: 'in-progress', label: 'בעבודה', dotColor: '#ff8c00' },
   { id: 'on-hold', label: 'בהמתנה', dotColor: '#eab308' },
@@ -70,9 +72,11 @@ const FEATURE_OPTIONS = [
   'תשתית כללית',
   'אודיט ותיקוני באגים',
   'Layout וניווט',
+  'מערכת תמונות ואחסון',
 ];
 
-const STORAGE_KEY = 'travelpro-kanban-v4';
+const STORAGE_KEY = 'travelpro-kanban-v8';
+const KANBAN_SEED_VERSION = 'v8'; // Bump to seed new INITIAL_TASKS to server
 
 const VERSION_TABS: { id: Version; label: string; subtitle: string; color: string }[] = [
   { id: 'V1', label: 'V1', subtitle: 'MVP — 9 מסכים', color: '#ff8c00' },
@@ -96,8 +100,8 @@ const INITIAL_TASKS: Task[] = [
     type: 'FEATURE', priority: 'HIGH', status: 'ideas', feature: 'דשבורד', estimate: '', tags: ['דשבורד'], createdAt: '2026-02-19', version: 'V1',
   },
   {
-    id: 'v1i3', title: 'תבניות הצעות מחיר מוכנות', description: 'ספריית תבניות לסוגי טיולים שונים: שטח, עירוני, חו״ל, כנסים.',
-    type: 'FEATURE', priority: 'MEDIUM', status: 'ideas', feature: 'עורך הצעות מחיר', estimate: '', tags: ['עורך הצעות'], createdAt: '2026-02-19', version: 'V1',
+    id: 'v1i3', title: 'תבניות הצעות מחיר מוכנות', description: 'ספריית תבניות לסוגי טיולים שונים (שטח, עירוני, חו״ל, כנסים), ואפשרות לשמור הצעה קיימת כתבנית לשימוש חוזר. ניהול ספריית תבניות.',
+    type: 'FEATURE', priority: 'MEDIUM', status: 'ideas', feature: 'עורך הצעות מחיר', estimate: '4h', tags: ['עורך הצעות', 'תבניות'], createdAt: '2026-02-19', version: 'V1',
   },
   {
     id: 'v1i4', title: 'דשבורד ספק אישי', description: 'תצוגה מרוכזת לספק: הזמנות פתוחות, היסטוריה, דירוג, מסמכים.',
@@ -110,10 +114,6 @@ const INITIAL_TASKS: Task[] = [
     type: 'TASK', priority: 'HIGH', status: 'todo', feature: 'עורך הצעות מחיר', estimate: '4h', tags: ['עורך הצעות'], createdAt: '2026-02-18', version: 'V1',
   },
   {
-    id: 't2', title: 'Modals פונקציונליים — בנק ספקים', description: 'הפיכת כפתורי הוספה/עריכה/מחיקה ל-modals עובדים במקום toast בלבד.',
-    type: 'TASK', priority: 'HIGH', status: 'todo', feature: 'בנק ספקים', estimate: '6h', tags: ['בנק ספקים'], createdAt: '2026-02-18', version: 'V1',
-  },
-  {
     id: 't3', title: 'ייצוא הצעת מחיר ל-PDF', description: 'יצירת PDF מעוצב מטבלת ההצעה כולל לוגו, פרטי לקוח ותנאי תשלום.',
     type: 'FEATURE', priority: 'MEDIUM', status: 'todo', feature: 'עורך הצעות מחיר', estimate: '6h', tags: ['עורך הצעות'], createdAt: '2026-02-18', version: 'V1',
   },
@@ -122,20 +122,32 @@ const INITIAL_TASKS: Task[] = [
     type: 'TASK', priority: 'MEDIUM', status: 'todo', feature: 'רשימת פרויקטים', estimate: '3h', tags: ['פרויקטים'], createdAt: '2026-02-18', version: 'V1',
   },
   {
-    id: 't5', title: 'חיבור Supabase — persistence לכל המסכים', description: 'החלפת נתוני mock בחיבור אמיתי ל-Supabase: פרויקטים, ספקים, הצעות.',
-    type: 'FEATURE', priority: 'HIGH', status: 'todo', feature: 'תשתית כללית', estimate: '2d', tags: ['Backend'], createdAt: '2026-02-17', version: 'V1',
-  },
-  {
     id: 't6', title: 'מפת ספקים — Leaflet clusters', description: 'הוספת clustering לסמנים במפה כשיש ספקים רבים באותו אזור.',
     type: 'TASK', priority: 'LOW', status: 'todo', feature: 'בנק ספקים', estimate: '3h', tags: ['בנק ספקים'], createdAt: '2026-02-18', version: 'V1',
   },
   {
-    id: 't7', title: 'העלאת מסמכים לכרטיס ספק', description: 'אפשרות לצרף חוזים, אישורים ותמונות לכרטיס הספק. שמירה ב-Supabase Storage.',
-    type: 'FEATURE', priority: 'MEDIUM', status: 'todo', feature: 'כרטיס ספק', estimate: '5h', tags: ['כרטיס ספק'], createdAt: '2026-02-18', version: 'V1',
-  },
-  {
     id: 't8', title: 'גרף התפלגות עלויות בדשבורד', description: 'Recharts pie/bar chart המציג חלוקת הוצאות לפי קטגוריית ספק.',
     type: 'FEATURE', priority: 'MEDIUM', status: 'todo', feature: 'דשבורד', estimate: '4h', tags: ['דשבורד'], createdAt: '2026-02-18', version: 'V1',
+  },
+  {
+    id: 't9', title: 'Drag & Drop בלו"ז הפעילות', description: 'מנגנון גרירה לסידור מחדש של אירועים בלו"ז (Timeline) של עורך הצעות המחיר. שימוש ב-react-dnd עם אנימציות.',
+    type: 'FEATURE', priority: 'HIGH', status: 'todo', feature: 'עורך הצעות מחיר', estimate: '5h', tags: ['עורך הצעות', 'DnD', 'לו"ז'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 't10', title: 'חיפוש/סינון מתקדם בבנק ספקים', description: 'חיפוש מתקדם עם פילטרים מרובים בו-זמנית: קטגוריה, אזור, דירוג, סטטוס אימות, טווח מחירים. כולל שמירת חיפושים אחרונים.',
+    type: 'FEATURE', priority: 'HIGH', status: 'todo', feature: 'בנק ספקים', estimate: '4h', tags: ['בנק ספקים', 'חיפוש'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 't11', title: 'מערכת תגיות לפרויקטים', description: 'הוספת תגיות/תוויות צבעוניות לפרויקטים: סוג טיול (שטח, עירוני, חו"ל), VIP, דחוף, וכו\'. סינון לפי תגיות ברשימת הפרויקטים.',
+    type: 'FEATURE', priority: 'MEDIUM', status: 'todo', feature: 'רשימת פרויקטים', estimate: '3h', tags: ['פרויקטים', 'תגיות'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 't12', title: 'גרירת תמונות ישירות על כרטיס רכיב', description: 'Drop zone ישירות על כרטיס רכיב בעורך הצעות — גרירת תמונה מהדסקטופ מעלה ישירות ל-Supabase Storage ומשייכת לרכיב ללא פתיחת ה-ItemEditor.',
+    type: 'FEATURE', priority: 'LOW', status: 'todo', feature: 'עורך הצעות מחיר', estimate: '3h', tags: ['עורך הצעות', 'תמונות', 'DnD'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 't13', title: 'תגיות וקטגוריות לתמונות', description: 'אפשרות לתייג תמונות (למשל: "מהספק", "מהשטח", "לוגו") ולסנן לפיהן. הן ב-ItemEditor והן ב-ProductEditor.',
+    type: 'FEATURE', priority: 'LOW', status: 'todo', feature: 'מערכת תמונות ואחסון', estimate: '3h', tags: ['תמונות', 'תגיות'], createdAt: '2026-02-21', version: 'V1',
   },
 
   // ──── V1 בעבודה ────
@@ -144,8 +156,9 @@ const INITIAL_TASKS: Task[] = [
     type: 'TASK', priority: 'HIGH', status: 'in-progress', feature: 'תצוגת לקוח', estimate: '4h', tags: ['תצוגת לקוח'], createdAt: '2026-02-18', version: 'V1',
   },
   {
-    id: 'p2', title: 'אשף סיווג ספקים — Drag & Drop', description: 'מנגנון גרירה לסיווג ספקים לקטגוריות, כולל אנימציות ועדכון מיידי.',
-    type: 'FEATURE', priority: 'HIGH', status: 'in-progress', feature: 'אשף סיווג ספקים', estimate: '5h', tags: ['סיווג ספקים'], createdAt: '2026-02-17', version: 'V1',
+    id: 'p2', title: 'אשף סיווג ספקים — שכתוב מלא מ-placeholder לכלי פונקציונלי',
+    description: 'שכתוב מלא מ-placeholder סטטי לכלי End-to-End: טעינת ספקים לא מסווגים מ-Supabase, כרטיס ספק מונפש עם slide animation, זיהוי "AI" אוטומטי של קטגוריה לפי מילות מפתח, גריד 10 קטגוריות עם תתי-קטגוריות דינמיות, תגיות, שמירה דרך PUT /suppliers/:id, קיצורי מקלדת, טיימר, סטטיסטיקות חיות, תור ספקים בסיידבר, ומסך סיום.',
+    type: 'FEATURE', priority: 'HIGH', status: 'done', feature: 'אשף סיווג ספקים', estimate: '5h', tags: ['סיווג ספקים', 'Motion', 'Supabase'], createdAt: '2026-02-21', version: 'V1',
   },
   {
     id: 'p3', title: 'שיפור ביצועים — lazy loading', description: 'הוספת React.lazy ו-Suspense למסכים כבדים: בנק ספקים, עורך הצעות, דשבורד.',
@@ -156,14 +169,6 @@ const INITIAL_TASKS: Task[] = [
   {
     id: 'h1', title: 'מערכת הרשאות — RBAC', description: 'הגדרת תפקידים: admin, editor, viewer. הגנה על נתיבים ופעולות רגישות.',
     type: 'FEATURE', priority: 'HIGH', status: 'on-hold', feature: 'תשתית כללית', estimate: '1d', tags: ['תשתית'], createdAt: '2026-02-17', version: 'V1',
-  },
-  {
-    id: 'h2', title: 'התראות push על שינויי סטטוס', description: 'שליחת התראה למפיק כשלקוח צופה/מאשר הצעה, או כשספק מעדכן פרטים.',
-    type: 'FEATURE', priority: 'MEDIUM', status: 'on-hold', feature: 'תשתית כללית', estimate: '6h', tags: ['תשתית'], createdAt: '2026-02-17', version: 'V1',
-  },
-  {
-    id: 'h3', title: 'תבניות הצעות מחיר', description: 'שמירת הצעה כתבנית לשימוש חוזר. ניהול ספריית תבניות.',
-    type: 'FEATURE', priority: 'MEDIUM', status: 'on-hold', feature: 'עורך הצעות מחיר', estimate: '4h', tags: ['עורך הצעות'], createdAt: '2026-02-18', version: 'V1',
   },
 
   // ──── V1 הושלם ────
@@ -188,8 +193,9 @@ const INITIAL_TASKS: Task[] = [
     type: 'FEATURE', priority: 'HIGH', status: 'done', feature: 'תצוגת לקוח', estimate: '6h', tags: ['תצוגת לקוח'], createdAt: '2026-02-13', version: 'V1',
   },
   {
-    id: 'd6', title: 'אשף ייבוא — העלאת Excel/CSV', description: 'ממשק ייבוא קבצים עם מיפוי עמודות, תצוגה מקדימה ואישור.',
-    type: 'FEATURE', priority: 'MEDIUM', status: 'done', feature: 'אשף ייבוא', estimate: '8h', tags: ['ייבוא'], createdAt: '2026-02-14', version: 'V1',
+    id: 'd6', title: 'אשף ייבוא — וויזארד End-to-End עם Undo/Rollback',
+    description: 'וויזארד פונקציונלי מקצה לקצה עם 4 שלבים: העלאת CSV (PapaParse), מיפוי עמודות חכם, בדיקת כפילויות, וייבוא בפועל ל-Supabase. כולל מערכת undo/rollback מלאה — route POST /suppliers/bulk-rollback, מתודת bulkRollback ב-API, ובמסך ההצלחה בר undo אדום עם countdown 30 שניות, אישור דו-שלבי ואנימציות Motion.',
+    type: 'FEATURE', priority: 'MEDIUM', status: 'done', feature: 'אשף ייבוא', estimate: '1d', tags: ['ייבוא', 'CSV', 'Undo', 'Motion'], createdAt: '2026-02-14', version: 'V1',
   },
   {
     id: 'd7', title: 'רשימת פרויקטים — תצוגה ופעולות', description: 'מסך כל הפרויקטים עם סטטוס, תאריכים, לקוח, ופעולות מהירות.',
@@ -202,6 +208,58 @@ const INITIAL_TASKS: Task[] = [
   {
     id: 'd9', title: 'מוצרים סרוקים — תצוגת תוצאות', description: 'מסך הצגת מוצרים שיובאו/נסרקו עם פילטרים ופעולות סיווג.',
     type: 'FEATURE', priority: 'MEDIUM', status: 'done', feature: 'מוצרים סרוקים', estimate: '5h', tags: ['סריקה'], createdAt: '2026-02-15', version: 'V1',
+  },
+
+  // ──── V1 הושלם — חיבור Supabase ומערכת תמונות (21/02/2026) ────
+  {
+    id: 'd10', title: 'חיבור Supabase — persistence לכל המסכים',
+    description: 'חיבור מלא ל-Supabase KV Store: פרויקטים, ספקים, אנשי קשר, מוצרים, מסמכים, רכיבי הצעה ולו"ז. שרת Hono נכתב מחדש במלואו עם seed v3 מלא כולל directPrice. כל ה-CRUD עובד end-to-end.',
+    type: 'FEATURE', priority: 'HIGH', status: 'done', feature: 'תשתית כללית', estimate: '2d', tags: ['Backend', 'Supabase', 'KV'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'd11', title: 'Modals פונקציונליים — בנק ספקים + כרטיס ספק',
+    description: 'כל כפתורי הוספה/עריכה/מחיקה עובדים עם modals/drawers אמיתיים: הוספת ספק, עריכת פרטי ספק, הוספת איש קשר, הוספת מוצר, העלאת מסמכים עם תאריך תוקף — כולם שומרים ל-Supabase.',
+    type: 'TASK', priority: 'HIGH', status: 'done', feature: 'בנק ספקים', estimate: '6h', tags: ['בנק ספקים', 'כרטיס ספק', 'CRUD'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'd12', title: 'העלאת מסמכים ותמונות לכרטיס ספק',
+    description: 'מערכת מסמכים מלאה בכרטיס ספק: 3 מסמכים נדרשים (רישיון עסק, תעודת כשרות, ביטוח צד ג) עם סטטוס תוקף חזותי (ירוק/צהוב/אדום), העלאת קבצים, עדכון תוקף, ומסמכים נוספים. שמירה ב-Supabase.',
+    type: 'FEATURE', priority: 'MEDIUM', status: 'done', feature: 'כרטיס ספק', estimate: '5h', tags: ['כרטיס ספק', 'מסמכים'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'd13', title: 'ItemEditor — עריכת רכיב בהצעת מחיר',
+    description: 'Drawer slide-in עם Motion spring animations לעריכת רכיב בהצעה. כולל: גלריית תמונות עם hero image + thumbnails + drag & drop upload ל-Supabase Storage (bucket פרטי + signed URLs), טפסי עריכה עם stagger animations (שם, ספק, תיאור, סטטוס, תמחור עם profit bar אנימטיבי, כוכבי משקל רווח, הערות), וכפתור שמירה עם success pulse. משולב בעורך הצעות עם כפתור עיפרון בכל כרטיס.',
+    type: 'FEATURE', priority: 'HIGH', status: 'done', feature: 'עורך הצעות מחיר', estimate: '8h', tags: ['עורך הצעות', 'תמונות', 'Motion', 'Storage'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'd14', title: 'ProductEditor — עריכת מוצר בכרטיס ספק',
+    description: 'Drawer slide-in עם Motion animations לעריכת מוצר בתוך כרטיס ספק. כולל: גלריית תמונות מלאה (hero + thumbnails + ניווט חצים + drag & drop upload), עריכת שם/תיאור/מחיר/יחידה עם בורר חזותי, כרטיס מחיר gradient, הערות פנימיות, שמירה עם success state. ב-Products Tab לחיצה על כרטיס פותחת ישירות את העורך.',
+    type: 'FEATURE', priority: 'HIGH', status: 'done', feature: 'כרטיס ספק', estimate: '6h', tags: ['כרטיס ספק', 'תמונות', 'Motion', 'Storage'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'd15', title: 'Server routes — תמונות מוצרים',
+    description: 'הוספת endpoints בשרת Hono: PUT לעדכון מוצר, POST להעלאת תמונת מוצר ל-Supabase Storage (base64 → bucket פרטי → signed URL), DELETE למחיקת תמונת מוצר. כולל פונקציות API בצד הלקוח: supplierProductsApi.update, uploadImage, deleteImage.',
+    type: 'TASK', priority: 'HIGH', status: 'done', feature: 'מערכת תמונות ואחסון', estimate: '3h', tags: ['Backend', 'Storage', 'API'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'd16', title: 'שדרוג UX כפתורי עריכה בעורך הצעות',
+    description: 'כפתור "עריכה" כתום תמיד גלוי (לא רק ב-hover) עם אייקון + טקסט בכל כרטיס רכיב. בנוסף — לחיצה על שם הרכיב פותחת את ה-ItemEditor ישירות עם אפקט hover כתום ואייקון עיפרון.',
+    type: 'TASK', priority: 'MEDIUM', status: 'done', feature: 'עורך הצעות מחיר', estimate: '30m', tags: ['עורך הצעות', 'UX'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'd17', title: 'מערכת אייקוני Lucide אחידה — החלפת אימוג\'ים',
+    description: 'החלפת כל האימוג\'ים באפליקציה במערכת אייקונים אחידה של Lucide: SectionIcon (עטיפה עם גדלים), TypeBadge (מיפוי קטגוריות לאייקונים), אייקונים בסרגל הסיכום, בטבלת התמחור ובלו"ז. כל רכיב מטופל.',
+    type: 'TASK', priority: 'MEDIUM', status: 'done', feature: 'תשתית כללית', estimate: '2h', tags: ['עיצוב', 'אייקונים', 'Lucide'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'd18', title: 'Seed v6 — נתוני ספקים מורחבים עם directPrice',
+    description: 'עדכון ה-seed לגרסה v6 (_meta:seeded_v6): נתוני ספקים עם אנשי קשר (שם, תפקיד, טלפון, אימייל), מוצרים (שם, מחיר, תיאור, יחידה), מסמכים עם תוקף, וכן ערכי directPrice ברכיבי הצעת מחיר לחישוב רווח מדויק. עדכוני schema ו-data משמעותיים לאורך 6 גרסאות seed.',
+    type: 'TASK', priority: 'HIGH', status: 'done', feature: 'תשתית כללית', estimate: '2h', tags: ['Backend', 'Seed', 'Data'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'd19', title: 'QuoteEditor — שלושת הסקשנים בעמוד אחד + scroll anchors',
+    description: 'שכתוב QuoteEditor כך ששלושת הסקשנים (רכיבים וספקים, תמחור ורווח יעד, לו"ז הפעילות) מוצגים תמיד אחד מתחת לשני באותו עמוד. הטאבים למעלה משמשים כ-scroll anchors עם IntersectionObserver — לחיצה על טאב גוללת לסקשן הרלוונטי, והטאב הפעיל מתעדכן אוטומטית לפי המיקום בעמוד.',
+    type: 'FEATURE', priority: 'HIGH', status: 'done', feature: 'עורך הצעות מחיר', estimate: '4h', tags: ['עורך הצעות', 'UX', 'IntersectionObserver'], createdAt: '2026-02-21', version: 'V1',
   },
 
   // ──── V1 הושלם — אודיט כפתורים (21/02/2026) ────
@@ -246,6 +304,35 @@ const INITIAL_TASKS: Task[] = [
     type: 'TASK', priority: 'HIGH', status: 'done', feature: 'אודיט ותיקוני באגים', estimate: '3h', tags: ['אודיט', 'QA', 'כפתורים'], createdAt: '2026-02-21', version: 'V1',
   },
 
+  // ──── V1 הושלם — מיקום ספק + תמונות מוצר בתצוגת preview (21/02/2026) ────
+  {
+    id: 'd20', title: 'מיקום ספק אינטראקטיבי — Leaflet + Nominatim',
+    description: 'קומפוננט SupplierLocationMap חדש שמחליף את ה-placeholder הסטטי של "מיקום" בכרטיס ספק. כולל: שדה חיפוש כתובת עם autocomplete דרך Nominatim (מוגבל לישראל, תוצאות בעברית), debounce 400ms, מפת Leaflet אינטראקטיבית עם marker ואנימציית flyTo, שמירה אוטומטית של address ו-location: {lat, lng} על אובייקט הספק ב-Supabase, כפתור מחיקת מיקום, ו-click outside לסגירת ההצעות.',
+    type: 'FEATURE', priority: 'MEDIUM', status: 'done', feature: 'כרטיס ספק', estimate: '4h', tags: ['כרטיס ספק', 'מפה', 'Leaflet', 'Nominatim'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'd21', title: 'תיקון dropdown autocomplete — חיפוש כתובת ספק',
+    description: 'ה-dropdown של תוצאות החיפוש היה נפתח כלפי מטה ונחתך מאחורי המפה. תוקן לפתיחה כלפי מעלה (bottom-full) עם z-[100], max-height וגלילה פנימית, כך שההצעות תמיד נראות מעל שדה החיפוש.',
+    type: 'BUG', priority: 'HIGH', status: 'done', feature: 'כרטיס ספק', estimate: '15m', tags: ['כרטיס ספק', 'UX', 'CSS'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'd22', title: 'תמונות מוצר בתצוגת Preview — לשונית מידע כללי',
+    description: 'כרטיסי המוצרים בלשונית "מידע כללי" (preview) הציגו רק טקסט ללא תמונות. עודכנו להציג thumbnail של תמונת המוצר הראשונה (hero image) עם אפקט zoom ב-hover, badge ספירת תמונות כשיש יותר מאחת, ו-fallback אייקון Package כשאין תמונות.',
+    type: 'TASK', priority: 'MEDIUM', status: 'done', feature: 'כרטיס ספק', estimate: '30m', tags: ['כרטיס ספק', 'UX', 'תמונות'], createdAt: '2026-02-21', version: 'V1',
+  },
+
+  // ──── V1 הושלם — מערכת ארכיון ספקים + Breadcrumbs (21/02/2026) ────
+  {
+    id: 'd23', title: 'מערכת ארכיון ספקים מלאה — End to End',
+    description: 'מערכת ארכיון מקצה לקצה: כפתור "העבר לארכיון" בכרטיס ספק עם מודאל אישור דו-שלבי, מתודת archive ב-API (משנה category ל-"ארכיון"), סינון ספקים מאורכנים מבנק הספקים, כפתור "ארכיון (X)" בהדר בנק הספקים שמוביל לעמוד ארכיון ייעודי (/suppliers/archive). עמוד הארכיון (SupplierArchive.tsx) מציג טבלה של כל הספקים המאורכנים עם חיפוש, צפייה וכפתור שחזור ירוק. בכרטיס ספק מאורכן — באנר "ספק זה נמצא בארכיון" עם כפתור שחזור, כפתור ה-back מנווט לארכיון, וכפתור ההעברה לארכיון מוסתר. Route חדש, מתודת restore ב-API.',
+    type: 'FEATURE', priority: 'HIGH', status: 'done', feature: 'בנק ספקים', estimate: '3h', tags: ['בנק ספקים', 'כרטיס ספק', 'ארכיון', 'CRUD'], createdAt: '2026-02-21', version: 'V1',
+  },
+  {
+    id: 'd24', title: 'שדרוג Breadcrumbs — route ארכיון + labels דינמיים',
+    description: 'הוספת route "ארכיון" ל-routeMeta עם אייקון Archive, וכן שיפור ה-fallback למזהי ספקים/פרויקטים דינמיים — במקום להציג #hash לא קריא, מוצגות תוויות ידידותיות: "פרטי ספק" לנתיבים תחת /suppliers/, "פרטי פרויקט" תחת /projects/.',
+    type: 'TASK', priority: 'MEDIUM', status: 'done', feature: 'Layout וניווט', estimate: '30m', tags: ['Breadcrumbs', 'UX', 'ניווט'], createdAt: '2026-02-21', version: 'V1',
+  },
+
   // ════════════════════════════════════════
   // V2 — הרחבה
   // ════════════════════════════════════════
@@ -278,7 +365,7 @@ const INITIAL_TASKS: Task[] = [
     type: 'FEATURE', priority: 'HIGH', status: 'todo', feature: 'תשתית כללית', estimate: '2d', tags: ['תשלומים'], createdAt: '2026-02-19', version: 'V2',
   },
   {
-    id: 'v2t2', title: 'מערכת התראות מתקדמת', description: 'התראות push, אימייל, ו-in-app על שינויי סטטוס, תאריכים קרובים.',
+    id: 'v2t2', title: 'מערכת התראות מתקדמת', description: 'התראות push, אימייל, ו-in-app על שינויי סטטוס, תאריכים קרובים. כולל התראה למפיק כשלקוח צופה/מאשר הצעה או כשספק מעדכן פרטים.',
     type: 'FEATURE', priority: 'HIGH', status: 'todo', feature: 'תשתית כללית', estimate: '1d', tags: ['התראות'], createdAt: '2026-02-19', version: 'V2',
   },
   {
@@ -616,6 +703,30 @@ function KanbanColumn({
   onOpenLightbox: (attachments: Task['attachments'], index: number) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showBottomFade, setShowBottomFade] = useState(false);
+
+  // Detect if content overflows and whether user scrolled to bottom
+  const checkScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const hasOverflow = el.scrollHeight > el.clientHeight + 2;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 8;
+    setShowBottomFade(hasOverflow && !atBottom);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    checkScroll();
+    el.addEventListener('scroll', checkScroll, { passive: true });
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', checkScroll);
+      ro.disconnect();
+    };
+  }, [checkScroll, tasks.length]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -631,17 +742,21 @@ function KanbanColumn({
     e.preventDefault();
     setDragOver(false);
     onDrop(column.id);
+    // Smooth scroll to top so the user sees the newly dropped task
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 80);
   }, [column.id, onDrop]);
 
   return (
     <div
-      className={`flex flex-col min-w-[255px] w-[255px] flex-shrink-0 transition-all ${dragOver ? 'scale-[1.01]' : ''}`}
+      className={`flex flex-col min-w-[255px] w-[255px] flex-shrink-0 h-full min-h-0 transition-all ${dragOver ? 'scale-[1.01]' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {/* Column Header */}
-      <div className="flex items-center justify-between mb-4 px-1">
+      <div className="flex items-center justify-between mb-4 px-1 flex-shrink-0">
         <div className="flex items-center gap-2">
           <span
             className="w-2.5 h-2.5 rounded-full"
@@ -665,32 +780,45 @@ function KanbanColumn({
         </button>
       </div>
 
-      {/* Drop Zone */}
-      <div
-        className={`flex-1 space-y-3 p-1.5 rounded-xl transition-colors min-h-[200px] ${
-          dragOver ? 'bg-[#ff8c00]/5 ring-2 ring-dashed ring-[#ff8c00]/30' : ''
-        }`}
-      >
-        <AnimatePresence mode="popLayout">
-          {tasks.map(task => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              onEdit={onEditTask}
-              isDragging={draggedTaskId === task.id}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onOpenLightbox={onOpenLightbox}
-            />
-          ))}
-        </AnimatePresence>
+      {/* Drop Zone — scrollable, with fade indicator */}
+      <div className="relative flex-1 min-h-0">
+        <div
+          ref={scrollRef}
+          className={`h-full space-y-3 p-1.5 rounded-xl transition-colors overflow-y-auto kanban-scroll ${
+            dragOver ? 'bg-[#ff8c00]/5 ring-2 ring-dashed ring-[#ff8c00]/30' : ''
+          }`}
+          style={{ scrollbarWidth: 'thin', scrollbarColor: '#d4cdc3 transparent' }}
+        >
+          <AnimatePresence mode="popLayout">
+            {tasks.map(task => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                onEdit={onEditTask}
+                isDragging={draggedTaskId === task.id}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                onOpenLightbox={onOpenLightbox}
+              />
+            ))}
+          </AnimatePresence>
 
-        {tasks.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-14 opacity-40">
-            <LayoutGrid size={24} className="text-[#8d785e] mb-2" />
-            <span className="text-[12px] text-[#8d785e]">אין משימות</span>
-          </div>
-        )}
+          {tasks.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-14 opacity-40">
+              <LayoutGrid size={24} className="text-[#8d785e] mb-2" />
+              <span className="text-[12px] text-[#8d785e]">אין משימות</span>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom fade-out gradient — visible when more content below */}
+        <div
+          className="pointer-events-none absolute bottom-0 left-0 right-0 h-10 rounded-b-xl transition-opacity duration-300"
+          style={{
+            opacity: showBottomFade ? 1 : 0,
+            background: 'linear-gradient(to bottom, transparent 0%, #f8f7f5 90%)',
+          }}
+        />
       </div>
     </div>
   );
@@ -1067,17 +1195,19 @@ function TaskModal({
 // ═══════════════ STATS BAR ═══════════════
 
 function StatsBar({ tasks }: { tasks: Task[] }) {
-  const total = tasks.length;
-  const done = tasks.filter(t => t.status === 'done').length;
-  const inProgress = tasks.filter(t => t.status === 'in-progress').length;
-  const highPriority = tasks.filter(t => t.priority === 'HIGH' && t.status !== 'done').length;
-  const ideas = tasks.filter(t => t.status === 'ideas').length;
+  // Exclude ideas — they have their own view now
+  const activeTasks = tasks.filter(t => t.status !== 'ideas');
+  const total = activeTasks.length;
+  const done = activeTasks.filter(t => t.status === 'done').length;
+  const inProgress = activeTasks.filter(t => t.status === 'in-progress').length;
+  const todo = activeTasks.filter(t => t.status === 'todo').length;
+  const highPriority = activeTasks.filter(t => t.priority === 'HIGH' && t.status !== 'done').length;
 
   return (
     <div className="flex items-center gap-5 text-[12px] flex-wrap">
       <div className="flex items-center gap-1.5">
         <div className="w-2 h-2 rounded-full bg-[#ff8c00]" />
-        <span className="text-[#8d785e]">סה״כ:</span>
+        <span className="text-[#8d785e]">סה״כ משימות:</span>
         <span className="text-[#181510]" style={{ fontWeight: 700 }}>{total}</span>
       </div>
       <div className="flex items-center gap-1.5">
@@ -1091,14 +1221,14 @@ function StatsBar({ tasks }: { tasks: Task[] }) {
         <span className="text-[#ff8c00]" style={{ fontWeight: 700 }}>{inProgress}</span>
       </div>
       <div className="flex items-center gap-1.5">
+        <div className="w-2 h-2 rounded-full bg-[#8d785e]" />
+        <span className="text-[#8d785e]">לביצוע:</span>
+        <span className="text-[#181510]" style={{ fontWeight: 700 }}>{todo}</span>
+      </div>
+      <div className="flex items-center gap-1.5">
         <div className="w-2 h-2 rounded-full bg-[#dc2626]" />
         <span className="text-[#8d785e]">עדיפות גבוהה:</span>
         <span className="text-[#dc2626]" style={{ fontWeight: 700 }}>{highPriority}</span>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <div className="w-2 h-2 rounded-full bg-[#a78bfa]" />
-        <span className="text-[#8d785e]">הצעות:</span>
-        <span className="text-[#a78bfa]" style={{ fontWeight: 700 }}>{ideas}</span>
       </div>
 
       {/* Progress bar */}
@@ -1118,17 +1248,201 @@ function StatsBar({ tasks }: { tasks: Task[] }) {
   );
 }
 
+// ═══════════════ IDEAS BANK VIEW ═══════════════
+
+type ViewMode = 'kanban' | 'ideas';
+
+function IdeasBank({
+  tasks,
+  version,
+  onEdit,
+  onPromote,
+  onAdd,
+}: {
+  tasks: Task[];
+  version: Version;
+  onEdit: (task: Task) => void;
+  onPromote: (task: Task) => void;
+  onAdd: () => void;
+}) {
+  const ideas = tasks.filter(t => t.status === 'ideas' && t.version === version);
+  const [filterFeature, setFilterFeature] = useState<string>('ALL');
+
+  const features = Array.from(new Set(ideas.map(t => t.feature))).sort();
+  const filtered = filterFeature === 'ALL' ? ideas : ideas.filter(t => t.feature === filterFeature);
+
+  return (
+    <div className="max-w-[1200px] mx-auto px-6 py-6">
+      {/* Sub-header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-[#a78bfa]/10 rounded-xl flex items-center justify-center">
+            <Lightbulb size={18} className="text-[#a78bfa]" />
+          </div>
+          <div>
+            <h2 className="text-[16px] text-[#181510]" style={{ fontWeight: 700 }}>
+              בנק הצעות — {version}
+            </h2>
+            <p className="text-[11px] text-[#8d785e]">
+              {ideas.length} רעיונות לפיתוח עתידי
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={onAdd}
+          className="flex items-center gap-1.5 text-white px-4 py-2 rounded-xl text-[12px] transition-colors shadow-md"
+          style={{ fontWeight: 600, backgroundColor: '#a78bfa', boxShadow: '0 4px 12px #a78bfa33' }}
+        >
+          <Plus size={14} />
+          הצעה חדשה
+        </button>
+      </div>
+
+      {/* Feature filter chips */}
+      {features.length > 1 && (
+        <div className="flex items-center gap-2 mb-5 flex-wrap">
+          <span className="text-[11px] text-[#8d785e]" style={{ fontWeight: 600 }}>סינון לפי פיצ'ר:</span>
+          <button
+            onClick={() => setFilterFeature('ALL')}
+            className={`text-[11px] px-3 py-1.5 rounded-lg transition-colors ${
+              filterFeature === 'ALL'
+                ? 'bg-[#a78bfa] text-white'
+                : 'bg-[#f0ece6] text-[#8d785e] hover:text-[#181510]'
+            }`}
+            style={{ fontWeight: 600 }}
+          >
+            הכל ({ideas.length})
+          </button>
+          {features.map(f => {
+            const count = ideas.filter(t => t.feature === f).length;
+            return (
+              <button
+                key={f}
+                onClick={() => setFilterFeature(f)}
+                className={`text-[11px] px-3 py-1.5 rounded-lg transition-colors ${
+                  filterFeature === f
+                    ? 'bg-[#a78bfa] text-white'
+                    : 'bg-[#f0ece6] text-[#8d785e] hover:text-[#181510]'
+                }`}
+                style={{ fontWeight: 600 }}
+              >
+                {f} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Ideas grid */}
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-16 h-16 bg-[#a78bfa]/10 rounded-2xl flex items-center justify-center mb-4">
+            <Lightbulb size={28} className="text-[#a78bfa]" />
+          </div>
+          <p className="text-[14px] text-[#8d785e]" style={{ fontWeight: 600 }}>אין הצעות עדיין</p>
+          <p className="text-[12px] text-[#b8a990] mt-1">לחצו על ״הצעה חדשה״ כדי להוסיף רעיון</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <AnimatePresence mode="popLayout">
+            {filtered.map(task => {
+              const TypeIcon = TYPE_CONFIG[task.type].icon;
+              return (
+                <motion.div
+                  key={task.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="bg-white rounded-2xl border border-[#e7e1da] p-5 hover:shadow-lg hover:border-[#a78bfa]/30 transition-all group cursor-pointer"
+                  onClick={() => onEdit(task)}
+                >
+                  {/* Top row: type + priority */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px]"
+                        style={{
+                          fontWeight: 700,
+                          backgroundColor: TYPE_CONFIG[task.type].bg,
+                          color: TYPE_CONFIG[task.type].color,
+                        }}
+                      >
+                        <TypeIcon size={10} />
+                        {TYPE_CONFIG[task.type].label}
+                      </div>
+                      <div
+                        className="px-2 py-1 rounded-md text-[10px]"
+                        style={{
+                          fontWeight: 700,
+                          backgroundColor: PRIORITY_CONFIG[task.priority].bg,
+                          color: PRIORITY_CONFIG[task.priority].color,
+                        }}
+                      >
+                        {PRIORITY_CONFIG[task.priority].label}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Title */}
+                  <h3 className="text-[14px] text-[#181510] mb-2 leading-snug" style={{ fontWeight: 700 }}>
+                    {task.title}
+                  </h3>
+
+                  {/* Description */}
+                  {task.description && (
+                    <p className="text-[12px] text-[#8d785e] mb-3 leading-relaxed line-clamp-3">
+                      {task.description}
+                    </p>
+                  )}
+
+                  {/* Feature + Tags */}
+                  <div className="flex items-center gap-2 flex-wrap mb-4">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#f0ece6] text-[#8d785e]" style={{ fontWeight: 600 }}>
+                      {task.feature}
+                    </span>
+                    {task.tags.slice(0, 2).map(tag => (
+                      <span key={tag} className="text-[10px] px-2 py-0.5 rounded-full bg-[#a78bfa]/10 text-[#a78bfa]" style={{ fontWeight: 600 }}>
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Promote button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onPromote(task); }}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] border-2 border-dashed border-[#e7e1da] text-[#8d785e] hover:border-[#a78bfa] hover:text-[#a78bfa] hover:bg-[#a78bfa]/5 transition-all opacity-0 group-hover:opacity-100"
+                    style={{ fontWeight: 600 }}
+                  >
+                    <MoveRight size={14} />
+                    העבר ללביצוע
+                  </button>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ═══════════════ MAIN KANBAN BOARD ═══════════════
 
 export function KanbanBoard() {
+  // ─── State ─────────────────────────────────────
   const [tasks, setTasks] = useState<Task[]>(() => {
+    // Fast initial load from localStorage cache while server loads
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
+      const cached = localStorage.getItem(STORAGE_KEY);
+      if (cached) return JSON.parse(cached);
     } catch {}
     return INITIAL_TASKS;
   });
 
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(false);
   const [activeVersion, setActiveVersion] = useState<Version>('V1');
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isNewTask, setIsNewTask] = useState(false);
@@ -1138,12 +1452,69 @@ export function KanbanBoard() {
   const [filterPriority, setFilterPriority] = useState<Priority | 'ALL'>('ALL');
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('kanban');
+  const mountedRef = useRef(true);
 
+  // ─── Load from server on mount ─────────────────
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-  }, [tasks]);
+    mountedRef.current = true;
+    let cancelled = false;
 
-  // Filter by version first, then by search/filters
+    async function loadFromServer() {
+      try {
+        // 1. Seed INITIAL_TASKS to server (idempotent — skips if already seeded)
+        const tasksToSeed = INITIAL_TASKS.map(({ attachments, ...rest }) => rest);
+        await kanbanApi.seed(tasksToSeed as Task[], KANBAN_SEED_VERSION);
+
+        // 2. Fetch all tasks from server
+        const serverTasks = await kanbanApi.list();
+
+        if (cancelled) return;
+
+        if (serverTasks && serverTasks.length > 0) {
+          setTasks(serverTasks as Task[]);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(serverTasks));
+          console.log(`[Kanban] Loaded ${serverTasks.length} tasks from server`);
+        } else {
+          // Fallback — server empty after seed (shouldn't happen)
+          console.warn('[Kanban] Server returned 0 tasks, using INITIAL_TASKS');
+          setTasks(INITIAL_TASKS);
+        }
+        setSyncError(false);
+      } catch (err) {
+        console.error('[Kanban] Failed to load from server, using cached data:', err);
+        setSyncError(true);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    loadFromServer();
+    return () => { cancelled = true; mountedRef.current = false; };
+  }, []);
+
+  // ─── Cache to localStorage on change ───────────
+  useEffect(() => {
+    if (!isLoading) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    }
+  }, [tasks, isLoading]);
+
+  // ─── Server sync helpers ───────────────────────
+  const syncToServer = useCallback(async (action: string, fn: () => Promise<void>) => {
+    setIsSyncing(true);
+    try {
+      await fn();
+      setSyncError(false);
+    } catch (err) {
+      console.error(`[Kanban] Sync failed (${action}):`, err);
+      setSyncError(true);
+    } finally {
+      if (mountedRef.current) setIsSyncing(false);
+    }
+  }, []);
+
+  // ─── Filtering ─────────────────────────────────
   const versionTasks = tasks.filter(t => t.version === activeVersion);
 
   const filteredTasks = versionTasks.filter(task => {
@@ -1157,9 +1528,12 @@ export function KanbanBoard() {
   });
 
   const getColumnTasks = useCallback((status: Status) =>
-    filteredTasks.filter(t => t.status === status),
+    filteredTasks
+      .filter(t => t.status === status)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
   [filteredTasks]);
 
+  // ─── Handlers with server sync ─────────────────
   const handleAddTask = (status: Status) => {
     const newTask: Task = {
       id: generateId(),
@@ -1179,17 +1553,29 @@ export function KanbanBoard() {
   };
 
   const handleSaveTask = (task: Task) => {
-    if (isNewTask) {
+    const creating = isNewTask; // Capture before state changes
+
+    // Optimistic update
+    if (creating) {
       setTasks(prev => [...prev, task]);
     } else {
       setTasks(prev => prev.map(t => t.id === task.id ? task : t));
     }
     setEditingTask(null);
     setIsNewTask(false);
+
+    // Sync to server (without attachments — they're too large for KV)
+    const { attachments, ...serverTask } = task;
+    if (creating) {
+      syncToServer('create', () => kanbanApi.create(serverTask).then(() => {}));
+    } else {
+      syncToServer('update', () => kanbanApi.update(task.id, serverTask).then(() => {}));
+    }
   };
 
   const handleDeleteTask = (id: string) => {
     setTasks(prev => prev.filter(t => t.id !== id));
+    syncToServer('delete', () => kanbanApi.delete(id).then(() => {}));
   };
 
   const handleDragStart = (_e: React.DragEvent, taskId: string) => {
@@ -1202,21 +1588,70 @@ export function KanbanBoard() {
 
   const handleDrop = (targetStatus: Status) => {
     if (!draggedTaskId) return;
+    const taskId = draggedTaskId; // Capture before state changes
+    const task = tasks.find(t => t.id === taskId);
+    if (!task || task.status === targetStatus) {
+      setDraggedTaskId(null);
+      return;
+    }
+
+    // Optimistic update
     setTasks(prev => prev.map(t =>
-      t.id === draggedTaskId ? { ...t, status: targetStatus } : t
+      t.id === taskId ? { ...t, status: targetStatus } : t
     ));
     setDraggedTaskId(null);
+
+    // Sync to server
+    syncToServer('move', () => kanbanApi.update(taskId, { status: targetStatus }).then(() => {}));
   };
 
-  const handleResetBoard = () => {
-    setTasks(INITIAL_TASKS);
-    localStorage.removeItem(STORAGE_KEY);
+
+  const handlePromoteIdea = (task: Task) => {
+    const promoted = { ...task, status: 'todo' as Status };
+    setTasks(prev => prev.map(t => t.id === task.id ? promoted : t));
+    syncToServer('promote', () => kanbanApi.update(task.id, { status: 'todo' }).then(() => {}));
+  };
+
+  const handleAddIdea = () => {
+    const newTask: Task = {
+      id: generateId(),
+      title: '',
+      description: '',
+      type: 'FEATURE',
+      priority: 'MEDIUM',
+      status: 'ideas',
+      feature: FEATURE_OPTIONS[0],
+      estimate: '',
+      tags: [],
+      createdAt: new Date().toISOString().split('T')[0],
+      version: activeVersion,
+    };
+    setEditingTask(newTask);
+    setIsNewTask(true);
+  };
+
+  const handleRefreshFromServer = async () => {
+    setIsLoading(true);
+    try {
+      const serverTasks = await kanbanApi.list();
+      if (serverTasks && serverTasks.length > 0) {
+        setTasks(serverTasks as Task[]);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverTasks));
+        setSyncError(false);
+      }
+    } catch (err) {
+      console.error('[Kanban] Refresh from server failed:', err);
+      setSyncError(true);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Count tasks per version for the tabs
   const v1Count = tasks.filter(t => t.version === 'V1').length;
   const v2Count = tasks.filter(t => t.version === 'V2').length;
   const versionCounts: Record<Version, number> = { V1: v1Count, V2: v2Count };
+  const ideasCount = tasks.filter(t => t.status === 'ideas' && t.version === activeVersion).length;
 
   const TYPE_FILTER_LABELS: Record<string, string> = { ALL: 'הכל', TASK: 'משימה', FEATURE: 'פיצ׳ר', BUG: 'באג' };
   const PRIO_FILTER_LABELS: Record<string, string> = { ALL: 'הכל', HIGH: 'גבוהה', MEDIUM: 'בינונית', LOW: 'נמוכה' };
@@ -1224,9 +1659,9 @@ export function KanbanBoard() {
   const activeTabColor = VERSION_TABS.find(v => v.id === activeVersion)?.color || '#ff8c00';
 
   return (
-    <div className="min-h-screen bg-[#f8f7f5]" dir="rtl">
+    <div className="h-screen flex flex-col overflow-hidden bg-[#f8f7f5]" dir="rtl">
       {/* Header */}
-      <div className="border-b border-[#e7e1da] bg-white">
+      <div className="border-b border-[#e7e1da] bg-white flex-shrink-0">
         <div className="max-w-[1500px] mx-auto px-6 py-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-4">
@@ -1238,9 +1673,28 @@ export function KanbanBoard() {
                   <h1 className="text-[20px] text-[#181510]" style={{ fontWeight: 700 }}>
                     לוח משימות
                   </h1>
-                  <p className="text-[12px] text-[#8d785e]">
-                    ניהול משימות פיתוח TravelPro
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[12px] text-[#8d785e]">
+                      ניהול משימות פיתוח TravelPro
+                    </p>
+                    {/* Sync status indicator */}
+                    {isSyncing ? (
+                      <div className="flex items-center gap-1 text-[10px] text-[#ff8c00]" style={{ fontWeight: 600 }}>
+                        <Loader2 size={10} className="animate-spin" />
+                        <span>שומר...</span>
+                      </div>
+                    ) : syncError ? (
+                      <div className="flex items-center gap-1 text-[10px] text-[#dc2626]" style={{ fontWeight: 600 }}>
+                        <CloudOff size={10} />
+                        <span>לא מסונכרן</span>
+                      </div>
+                    ) : !isLoading ? (
+                      <div className="flex items-center gap-1 text-[10px] text-[#22c55e]" style={{ fontWeight: 600 }}>
+                        <Cloud size={10} />
+                        <span>מסונכרן</span>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
 
@@ -1288,68 +1742,116 @@ export function KanbanBoard() {
                   );
                 })}
               </div>
+
+              {/* ══════ VIEW MODE TOGGLE ══════ */}
+              <div className="flex items-center bg-[#f0ece6] rounded-xl p-1 mr-2">
+                <button
+                  onClick={() => setViewMode('kanban')}
+                  className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] transition-all ${
+                    viewMode === 'kanban' ? 'bg-white shadow-sm' : 'hover:bg-white/50'
+                  }`}
+                  style={{ fontWeight: viewMode === 'kanban' ? 700 : 500 }}
+                >
+                  <LayoutGrid size={13} style={{ color: viewMode === 'kanban' ? '#ff8c00' : '#8d785e' }} />
+                  <span style={{ color: viewMode === 'kanban' ? '#ff8c00' : '#8d785e' }}>
+                    לוח קנבן
+                  </span>
+                </button>
+                <button
+                  onClick={() => setViewMode('ideas')}
+                  className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] transition-all ${
+                    viewMode === 'ideas' ? 'bg-white shadow-sm' : 'hover:bg-white/50'
+                  }`}
+                  style={{ fontWeight: viewMode === 'ideas' ? 700 : 500 }}
+                >
+                  <Lightbulb size={13} style={{ color: viewMode === 'ideas' ? '#a78bfa' : '#8d785e' }} />
+                  <span style={{ color: viewMode === 'ideas' ? '#a78bfa' : '#8d785e' }}>
+                    בנק הצעות
+                  </span>
+                  {ideasCount > 0 && (
+                    <span
+                      className="text-[10px] px-1.5 py-0.5 rounded-full"
+                      style={{
+                        fontWeight: 700,
+                        backgroundColor: viewMode === 'ideas' ? '#a78bfa15' : '#e7e1da',
+                        color: viewMode === 'ideas' ? '#a78bfa' : '#8d785e',
+                      }}
+                    >
+                      {ideasCount}
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Search */}
-              <div className="relative">
-                <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#b8a990]" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="חיפוש משימות..."
-                  className="w-52 bg-[#f8f7f5] border border-[#e7e1da] rounded-xl pr-9 pl-3 py-2 text-[12px] text-[#181510] placeholder-[#b8a990] focus:outline-none focus:border-[#ff8c00] focus:ring-2 focus:ring-[#ff8c00]/10 transition-all"
-                />
-              </div>
+              {/* Kanban-specific controls */}
+              {viewMode === 'kanban' && (
+                <>
+                  {/* Search */}
+                  <div className="relative">
+                    <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#b8a990]" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="חיפוש משימות..."
+                      className="w-52 bg-[#f8f7f5] border border-[#e7e1da] rounded-xl pr-9 pl-3 py-2 text-[12px] text-[#181510] placeholder-[#b8a990] focus:outline-none focus:border-[#ff8c00] focus:ring-2 focus:ring-[#ff8c00]/10 transition-all"
+                    />
+                  </div>
 
-              {/* Filter toggle */}
+                  {/* Filter toggle */}
+                  <button
+                    onClick={() => setShowFilters(!showFilters)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] border transition-colors ${
+                      showFilters || filterType !== 'ALL' || filterPriority !== 'ALL'
+                        ? 'bg-[#ff8c00]/10 border-[#ff8c00]/30 text-[#ff8c00]'
+                        : 'bg-[#f8f7f5] border-[#e7e1da] text-[#8d785e] hover:text-[#181510]'
+                    }`}
+                    style={{ fontWeight: 600 }}
+                  >
+                    <Filter size={13} />
+                    סינון
+                    {(filterType !== 'ALL' || filterPriority !== 'ALL') && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#ff8c00]" />
+                    )}
+                  </button>
+
+                  {/* Add task */}
+                  <button
+                    onClick={() => handleAddTask('todo')}
+                    className="flex items-center gap-1.5 text-white px-4 py-2 rounded-xl text-[12px] transition-colors shadow-md"
+                    style={{
+                      fontWeight: 600,
+                      backgroundColor: activeTabColor,
+                      boxShadow: `0 4px 12px ${activeTabColor}33`,
+                    }}
+                  >
+                    <Plus size={14} />
+                    משימה חדשה
+                  </button>
+                </>
+              )}
+
+              {/* Refresh from server */}
               <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] border transition-colors ${
-                  showFilters || filterType !== 'ALL' || filterPriority !== 'ALL'
-                    ? 'bg-[#ff8c00]/10 border-[#ff8c00]/30 text-[#ff8c00]'
-                    : 'bg-[#f8f7f5] border-[#e7e1da] text-[#8d785e] hover:text-[#181510]'
-                }`}
+                onClick={handleRefreshFromServer}
+                disabled={isLoading}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] bg-[#f8f7f5] border border-[#e7e1da] text-[#8d785e] hover:text-[#181510] transition-colors disabled:opacity-50"
                 style={{ fontWeight: 600 }}
+                title="רענון מהשרת"
               >
-                <Filter size={13} />
-                סינון
-                {(filterType !== 'ALL' || filterPriority !== 'ALL') && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#ff8c00]" />
-                )}
+                <RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />
+                רענון
               </button>
 
-              {/* Add task */}
-              <button
-                onClick={() => handleAddTask('todo')}
-                className="flex items-center gap-1.5 text-white px-4 py-2 rounded-xl text-[12px] transition-colors shadow-md"
-                style={{
-                  fontWeight: 600,
-                  backgroundColor: activeTabColor,
-                  boxShadow: `0 4px 12px ${activeTabColor}33`,
-                }}
-              >
-                <Plus size={14} />
-                משימה חדשה
-              </button>
 
-              {/* Reset */}
-              <button
-                onClick={handleResetBoard}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] bg-[#f8f7f5] border border-[#e7e1da] text-[#8d785e] hover:text-[#181510] transition-colors"
-                style={{ fontWeight: 600 }}
-                title="איפוס ללוח ברירת מחדל"
-              >
-                <AlertCircle size={13} />
-                איפוס
-              </button>
             </div>
           </div>
 
-          {/* Filter bar */}
+          {/* Filter bar — kanban only */}
           <AnimatePresence>
-            {showFilters && (
+            {showFilters && viewMode === 'kanban' && (
               <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
@@ -1409,39 +1911,73 @@ export function KanbanBoard() {
             )}
           </AnimatePresence>
 
-          {/* Stats — scoped to active version */}
-          <div className="mt-3">
-            <StatsBar tasks={versionTasks} />
-          </div>
+          {/* Stats — scoped to active version, kanban only */}
+          {viewMode === 'kanban' && (
+            <div className="mt-3">
+              <StatsBar tasks={versionTasks} />
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Board */}
-      <div className="max-w-[1500px] mx-auto px-6 py-6 overflow-x-auto">
+      {/* Content Area */}
+      <div className="relative flex-1 min-h-0 flex flex-col">
+        {/* Loading overlay on initial load */}
+        {isLoading && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#f8f7f5]/70 backdrop-blur-sm rounded-xl">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 size={28} className="animate-spin text-[#ff8c00]" />
+              <span className="text-[13px] text-[#8d785e]" style={{ fontWeight: 600 }}>טוען משימות מהשרת...</span>
+            </div>
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
-          <motion.div
-            key={activeVersion}
-            initial={{ opacity: 0, x: activeVersion === 'V1' ? 30 : -30 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: activeVersion === 'V1' ? -30 : 30 }}
-            transition={{ duration: 0.25 }}
-            className="flex gap-4 justify-center min-w-max"
-          >
-            {COLUMNS.map(column => (
-              <KanbanColumn
-                key={column.id}
-                column={column}
-                tasks={getColumnTasks(column.id)}
-                onEditTask={(task) => { setEditingTask(task); setIsNewTask(false); }}
-                onAddTask={handleAddTask}
-                draggedTaskId={draggedTaskId}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-                onDrop={handleDrop}
-                onOpenLightbox={(attachments, index) => setLightboxData({ attachments, index })}
+          {viewMode === 'kanban' ? (
+            <motion.div
+              key={`kanban-${activeVersion}`}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.25 }}
+              className="flex-1 min-h-0 max-w-[1500px] w-full mx-auto px-6 py-6 overflow-x-auto"
+            >
+              <div className="flex gap-4 justify-center min-w-max h-full">
+                {COLUMNS.map(column => (
+                  <KanbanColumn
+                    key={column.id}
+                    column={column}
+                    tasks={getColumnTasks(column.id)}
+                    onEditTask={(task) => { setEditingTask(task); setIsNewTask(false); }}
+                    onAddTask={handleAddTask}
+                    draggedTaskId={draggedTaskId}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                    onDrop={handleDrop}
+                    onOpenLightbox={(attachments, index) => setLightboxData({ attachments, index })}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key={`ideas-${activeVersion}`}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.25 }}
+              className="flex-1 min-h-0 overflow-y-auto kanban-scroll"
+              style={{ scrollbarWidth: 'thin', scrollbarColor: '#d4cdc3 transparent' }}
+            >
+              <IdeasBank
+                tasks={tasks}
+                version={activeVersion}
+                onEdit={(task) => { setEditingTask(task); setIsNewTask(false); }}
+                onPromote={handlePromoteIdea}
+                onAdd={handleAddIdea}
               />
-            ))}
-          </motion.div>
+            </motion.div>
+          )}
         </AnimatePresence>
       </div>
 

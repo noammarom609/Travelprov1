@@ -5,6 +5,7 @@ import { ProjectsList } from './components/ProjectsList';
 import { QuoteEditor } from './components/QuoteEditor';
 import { SupplierBank } from './components/SupplierBank';
 import { SupplierDetail } from './components/SupplierDetail';
+import { SupplierArchive } from './components/SupplierArchive';
 import { ImportWizard } from './components/ImportWizard';
 import { ClassificationWizard } from './components/ClassificationWizard';
 import { ScannedProducts } from './components/ScannedProducts';
@@ -30,6 +31,7 @@ export const router = createBrowserRouter(
         { path: 'projects', Component: ProjectsList },
         { path: 'projects/:id', Component: QuoteEditor },
         { path: 'suppliers', Component: SupplierBank },
+        { path: 'suppliers/archive', Component: SupplierArchive },
         { path: 'suppliers/import', Component: ImportWizard },
         { path: 'suppliers/classify', Component: ClassificationWizard },
         { path: 'suppliers/scan', Component: ScannedProducts },

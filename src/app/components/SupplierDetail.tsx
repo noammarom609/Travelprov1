@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useForm } from 'react-hook-form';
 import {
-  ArrowRight, CheckCircle, Edit2, Phone, Mail,
+  ArrowRight, CheckCircle, Phone, Mail,
   MapPin, FileText, AlertTriangle, Plus, Loader2, Clock, Save, Trash2, X,
-  Upload, Shield, ShieldCheck, ShieldAlert, CalendarDays
+  Upload, Shield, ShieldCheck, ShieldAlert, CalendarDays, Pencil, Camera, Package, Users, Archive, ArchiveRestore
 } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import type { Supplier } from './data';
@@ -12,6 +12,8 @@ import { suppliersApi, supplierContactsApi, supplierProductsApi, supplierDocumen
 import type { SupplierContact, SupplierProduct, SupplierDocument } from './api';
 import { FormField, rules } from './FormField';
 import { appToast } from './AppToast';
+import { ProductEditor } from './ProductEditor';
+import { SupplierLocationMap } from './SupplierLocationMap';
 
 const VINEYARD_IMG = 'https://images.unsplash.com/photo-1762330465953-75478d918896?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx2aW5leWFyZCUyMGdyYXBlJTIwaGlsbHNpZGUlMjBncmVlbnxlbnwxfHx8fDE3NzE0NjgyNDJ8MA&ixlib=rb-4.1.0&q=80&w=1080';
 
@@ -24,7 +26,6 @@ const tabItems = [
 
 const statusLabel: Record<string, string> = { verified: 'מאומת', pending: 'ממתין לאימות', unverified: 'לא מאומת' };
 
-interface EditSupplierForm { phone: string; notes: string; }
 interface AddContactForm { contactName: string; contactRole: string; contactPhone: string; contactEmail: string; }
 interface AddProductForm { productName: string; productPrice: string; productDescription: string; productUnit: string; }
 
@@ -37,7 +38,6 @@ export function SupplierDetail() {
   const [products, setProducts] = useState<SupplierProduct[]>([]);
   const [documents, setDocuments] = useState<SupplierDocument[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [showAddContact, setShowAddContact] = useState(false);
@@ -46,7 +46,13 @@ export function SupplierDetail() {
   const [docExpiryValue, setDocExpiryValue] = useState('');
   const [docSaving, setDocSaving] = useState<string | null>(null);
 
-  const editForm = useForm<EditSupplierForm>({ mode: 'onChange', defaultValues: { phone: '', notes: '' } });
+  // Product editor
+  const [editingProduct, setEditingProduct] = useState<SupplierProduct | null>(null);
+
+  // Archive
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+
   const contactForm = useForm<AddContactForm>({ mode: 'onChange', defaultValues: { contactName: '', contactRole: '', contactPhone: '', contactEmail: '' } });
   const productForm = useForm<AddProductForm>({ mode: 'onChange', defaultValues: { productName: '', productPrice: '', productDescription: '', productUnit: 'אדם' } });
 
@@ -65,7 +71,6 @@ export function SupplierDetail() {
         setContacts(c);
         setProducts(p);
         setDocuments(d);
-        editForm.reset({ phone: s.phone || '', notes: s.notes || '' });
       })
       .catch(err => {
         console.error('[SupplierDetail] fetch failed:', err);
@@ -74,29 +79,13 @@ export function SupplierDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // ─── Save supplier edit ───
-  const onSaveEdit = async (data: EditSupplierForm) => {
-    if (!id || !supplier) return;
-    try {
-      setSaving(true);
-      const updated = await suppliersApi.update(id, { notes: data.notes.trim() || '-', phone: data.phone.trim() });
-      setSupplier(updated);
-      setEditing(false);
-      appToast.success('פרטי הספק עודכנו בהצלחה');
-    } catch (err) { appToast.error('שגיאה בשמירת שינויים'); }
-    finally { setSaving(false); }
-  };
-
-  // ─── Add contact ───
   const onAddContact = async (data: AddContactForm) => {
     if (!id) return;
     try {
       setSaving(true);
       const newContact = await supplierContactsApi.create(id, {
-        name: data.contactName.trim(),
-        role: data.contactRole.trim(),
-        phone: data.contactPhone.trim(),
-        email: data.contactEmail.trim(),
+        name: data.contactName.trim(), role: data.contactRole.trim(),
+        phone: data.contactPhone.trim(), email: data.contactEmail.trim(),
         primary: contacts.length === 0,
       });
       setContacts(prev => [...prev, newContact]);
@@ -107,7 +96,6 @@ export function SupplierDetail() {
     finally { setSaving(false); }
   };
 
-  // ─── Delete contact ───
   const deleteContact = async (contactId: string) => {
     if (!id) return;
     try {
@@ -117,16 +105,13 @@ export function SupplierDetail() {
     } catch (err) { appToast.error('שגיאה במחיקת איש קשר'); }
   };
 
-  // ─── Add product ───
   const onAddProduct = async (data: AddProductForm) => {
     if (!id) return;
     try {
       setSaving(true);
       const newProduct = await supplierProductsApi.create(id, {
-        name: data.productName.trim(),
-        price: parseFloat(data.productPrice) || 0,
-        description: data.productDescription.trim(),
-        unit: data.productUnit.trim(),
+        name: data.productName.trim(), price: parseFloat(data.productPrice) || 0,
+        description: data.productDescription.trim(), unit: data.productUnit.trim(),
       });
       setProducts(prev => [...prev, newProduct]);
       setShowAddProduct(false);
@@ -136,7 +121,6 @@ export function SupplierDetail() {
     finally { setSaving(false); }
   };
 
-  // ─── Delete product ───
   const deleteProduct = async (productId: string) => {
     if (!id) return;
     try {
@@ -146,7 +130,11 @@ export function SupplierDetail() {
     } catch (err) { appToast.error('שגיאה במחיקת מוצר'); }
   };
 
-  // ─── Update document expiry ───
+  const handleProductUpdate = (updated: SupplierProduct) => {
+    setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
+    if (editingProduct?.id === updated.id) setEditingProduct(updated);
+  };
+
   const updateDocExpiry = async (docId: string) => {
     if (!id || !docExpiryValue) return;
     try {
@@ -159,6 +147,30 @@ export function SupplierDetail() {
     } catch (err) { appToast.error('שגיאה בעדכון תאריך פג תוקף'); }
     finally { setDocSaving(null); }
   };
+
+  const archiveSupplier = async () => {
+    if (!id) return;
+    try {
+      setArchiving(true);
+      await suppliersApi.archive(id);
+      appToast.success('הספק הועבר לארכיון', `${supplier?.name} הועבר לארכיון בהצלחה`);
+      navigate('/suppliers');
+    } catch (err) { appToast.error('שגיאה בהעברה לארכיון'); }
+    finally { setArchiving(false); }
+  };
+
+  const restoreSupplier = async () => {
+    if (!id) return;
+    try {
+      setArchiving(true);
+      const updated = await suppliersApi.update(id, { category: 'כללי', categoryColor: '#8d785e' });
+      setSupplier(updated);
+      appToast.success('הספק שוחזר בהצלחה', `${supplier?.name} חזר לבנק הספקים`);
+    } catch (err) { appToast.error('שגיאה בשחזור ספק'); }
+    finally { setArchiving(false); }
+  };
+
+  const isArchived = supplier?.category === 'ארכיון';
 
   if (loading) {
     return (
@@ -189,10 +201,29 @@ export function SupplierDetail() {
 
   return (
     <div className="p-4 lg:p-6 mx-auto font-['Assistant',sans-serif]" dir="rtl">
+      {/* Archived banner */}
+      {isArchived && (
+        <div className="flex items-center justify-between bg-[#94a3b8]/10 border border-[#94a3b8]/30 rounded-xl px-4 py-3 mb-5">
+          <div className="flex items-center gap-2">
+            <Archive size={16} className="text-[#64748b]" />
+            <span className="text-[14px] text-[#475569]" style={{ fontWeight: 600 }}>ספק זה נמצא בארכיון</span>
+          </div>
+          <button
+            onClick={restoreSupplier}
+            disabled={archiving}
+            className="flex items-center gap-1.5 text-[13px] text-green-600 hover:text-green-700 bg-green-50 hover:bg-green-100 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-all"
+            style={{ fontWeight: 600 }}
+          >
+            {archiving ? <Loader2 size={14} className="animate-spin" /> : <ArchiveRestore size={14} />}
+            {archiving ? 'משחזר...' : 'שחזור לבנק ספקים'}
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/suppliers')} className="text-[#8d785e] hover:text-[#181510] transition-colors">
+          <button onClick={() => navigate(isArchived ? '/suppliers/archive' : '/suppliers')} className="text-[#8d785e] hover:text-[#181510] transition-colors">
             <ArrowRight size={20} />
           </button>
           <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: supplier.categoryColor + '15' }}>
@@ -211,32 +242,19 @@ export function SupplierDetail() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {editing ? (
-            <>
-              <button onClick={editForm.handleSubmit(onSaveEdit)} disabled={saving} className="flex items-center gap-1.5 text-[13px] text-white bg-[#ff8c00] hover:bg-[#e67e00] px-3 py-2 rounded-lg transition-colors" style={{ fontWeight: 600 }}>
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} שמור
-              </button>
-              <button onClick={() => setEditing(false)} className="text-[13px] text-[#6b5d45] border border-[#e7e1da] px-3 py-2 rounded-lg hover:bg-[#f5f3f0] transition-colors">ביטול</button>
-            </>
-          ) : (
-            <button onClick={() => setEditing(true)} className="flex items-center gap-1.5 text-[13px] text-[#6b5d45] border border-[#e7e1da] px-3 py-2 rounded-lg hover:bg-[#f5f3f0] transition-colors">
-              <Edit2 size={14} /> עריכה
+        {!isArchived && (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowArchiveConfirm(true)}
+              className="flex items-center gap-1.5 text-[13px] text-[#8d785e] hover:text-[#181510] border border-[#e7e1da] hover:border-[#b8a990] px-3 py-2 rounded-xl transition-all"
+              style={{ fontWeight: 500 }}
+            >
+              <Archive size={15} />
+              העבר לארכיון
             </button>
-          )}
-        </div>
-      </div>
-
-      {/* Editable fields */}
-      {editing && (
-        <div className="bg-[#fffaf3] border border-[#ff8c00]/20 rounded-xl p-5 mb-5 space-y-3">
-          <h3 className="text-[14px] text-[#181510]" style={{ fontWeight: 700 }}>עריכת פרטי ספק</h3>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <FormField label="טלפון" placeholder="05X-XXXXXXX" error={editForm.formState.errors.phone} isDirty={editForm.formState.dirtyFields.phone} {...editForm.register('phone', rules.israeliPhone(false))} />
-            <FormField label="הערות" placeholder="הערות על הספק..." error={editForm.formState.errors.notes} isDirty={editForm.formState.dirtyFields.notes} {...editForm.register('notes')} />
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Notes alert */}
       {supplier.notes && supplier.notes !== '-' && (
@@ -310,13 +328,40 @@ export function SupplierDetail() {
                 <p className="text-[13px] text-[#b8a990] text-center py-4">אין מוצרים</p>
               ) : (
                 <div className="grid sm:grid-cols-3 gap-3">
-                  {products.slice(0, 3).map(product => (
-                    <div key={product.id} className="border border-[#e7e1da] rounded-xl p-3 hover:shadow-sm transition-shadow">
-                      <div className="text-[13px] text-[#181510]" style={{ fontWeight: 600 }}>{product.name}</div>
-                      <div className="text-[11px] text-[#8d785e] mt-1 line-clamp-2">{product.description}</div>
-                      <div className="mt-2 text-[14px] text-[#181510]" style={{ fontWeight: 700 }}>₪{product.price.toLocaleString()}<span className="text-[11px] text-[#8d785e]" style={{ fontWeight: 400 }}>/{product.unit}</span></div>
-                    </div>
-                  ))}
+                  {products.slice(0, 3).map(product => {
+                    const heroImg = product.images?.length ? product.images[0].url : null;
+                    return (
+                      <div
+                        key={product.id}
+                        onClick={() => setEditingProduct(product)}
+                        className="border border-[#e7e1da] rounded-xl overflow-hidden hover:shadow-sm hover:border-[#ff8c00]/40 transition-all cursor-pointer group"
+                      >
+                        {/* Product image */}
+                        {heroImg ? (
+                          <div className="h-24 bg-[#f5f3f0] overflow-hidden relative">
+                            <ImageWithFallback src={heroImg} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                            {(product.images?.length || 0) > 1 && (
+                              <span className="absolute top-1.5 left-1.5 bg-black/60 backdrop-blur-md text-white text-[9px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                <Camera size={9} /> {product.images!.length}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="h-16 bg-[#f5f3f0] flex items-center justify-center">
+                            <Package size={20} className="text-[#d0c8bb]" />
+                          </div>
+                        )}
+                        <div className="p-3">
+                          <div className="text-[13px] text-[#181510] group-hover:text-[#ff8c00] transition-colors flex items-center gap-1" style={{ fontWeight: 600 }}>
+                            {product.name}
+                            <Pencil size={10} className="text-[#b8a990] group-hover:text-[#ff8c00] transition-colors" />
+                          </div>
+                          <div className="text-[11px] text-[#8d785e] mt-1 line-clamp-2">{product.description}</div>
+                          <div className="mt-2 text-[14px] text-[#181510]" style={{ fontWeight: 700 }}>₪{product.price.toLocaleString()}<span className="text-[11px] text-[#8d785e]" style={{ fontWeight: 400 }}>/{product.unit}</span></div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -338,11 +383,10 @@ export function SupplierDetail() {
             </div>
 
             {/* Location */}
-            <div className="bg-white rounded-xl border border-[#e7e1da] p-5">
-              <h3 className="text-[14px] text-[#181510] mb-3" style={{ fontWeight: 700 }}>מיקום</h3>
-              <div className="bg-[#f5f3f0] rounded-lg h-32 mb-3 flex items-center justify-center text-[#8d785e]"><MapPin size={24} /></div>
-              <div className="flex items-center gap-2 text-[13px] text-[#8d785e]"><MapPin size={13} /> {supplier.region}</div>
-            </div>
+            <SupplierLocationMap
+              supplier={supplier}
+              onUpdate={(updated) => setSupplier(updated)}
+            />
 
             {/* Documents summary */}
             <div className="bg-white rounded-xl border border-[#e7e1da] p-5">
@@ -407,7 +451,7 @@ export function SupplierDetail() {
           </div>
           {contacts.length === 0 ? (
             <div className="text-center py-10">
-              <div className="text-[32px] mb-2">👤</div>
+              <div className="flex justify-center mb-2"><Users size={32} className="text-[#d0c8bb]" /></div>
               <p className="text-[14px] text-[#8d785e]">אין אנשי קשר</p>
               <button onClick={() => setShowAddContact(true)} className="mt-2 text-[13px] text-[#ff8c00]" style={{ fontWeight: 600 }}>הוסף איש קשר ראשון</button>
             </div>
@@ -448,25 +492,57 @@ export function SupplierDetail() {
           </div>
           {products.length === 0 ? (
             <div className="text-center py-10">
-              <div className="text-[32px] mb-2">📦</div>
+              <div className="flex justify-center mb-2"><Package size={32} className="text-[#d0c8bb]" /></div>
               <p className="text-[14px] text-[#8d785e]">אין מוצרים</p>
               <button onClick={() => setShowAddProduct(true)} className="mt-2 text-[13px] text-[#ff8c00]" style={{ fontWeight: 600 }}>הוסף מוצר ראשון</button>
             </div>
           ) : (
             <div className="grid sm:grid-cols-3 gap-4">
-              {products.map(product => (
-                <div key={product.id} className="border border-[#e7e1da] rounded-xl overflow-hidden hover:shadow-md transition-shadow group relative">
-                  <button onClick={() => deleteProduct(product.id)} className="absolute top-2 left-2 z-10 w-7 h-7 bg-white/90 rounded-full flex items-center justify-center text-[#c4b89a] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all shadow-sm"><Trash2 size={12} /></button>
-                  <div className="h-28 bg-[#f5f3f0] flex items-center justify-center">
-                    <ImageWithFallback src={VINEYARD_IMG} alt={product.name} className="w-full h-full object-cover" />
-                    <span className="absolute bottom-2 left-2 text-[12px] bg-white/90 backdrop-blur-sm text-[#181510] px-2 py-0.5 rounded-md" style={{ fontWeight: 700 }}>₪{product.price.toLocaleString()}/{product.unit}</span>
+              {products.map(product => {
+                const imageCount = product.images?.length || 0;
+                const heroImg = imageCount > 0 ? product.images![0].url : VINEYARD_IMG;
+                return (
+                  <div
+                    key={product.id}
+                    onClick={() => setEditingProduct(product)}
+                    className="border border-[#e7e1da] rounded-xl overflow-hidden hover:shadow-lg hover:border-[#ff8c00]/40 transition-all group relative cursor-pointer"
+                  >
+                    {/* Delete button */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteProduct(product.id); }}
+                      className="absolute top-2 left-2 z-10 w-7 h-7 bg-white/90 rounded-full flex items-center justify-center text-[#c4b89a] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all shadow-sm"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+
+                    {/* Edit badge */}
+                    <div className="absolute top-2 right-2 z-10 bg-[#ff8c00] text-white text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all shadow-sm" style={{ fontWeight: 600 }}>
+                      <Pencil size={10} /> עריכה
+                    </div>
+
+                    {/* Image */}
+                    <div className="h-32 bg-[#f5f3f0] flex items-center justify-center relative overflow-hidden">
+                      <ImageWithFallback src={heroImg} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      {/* Image count */}
+                      {imageCount > 1 && (
+                        <span className="absolute top-2 left-2 bg-black/60 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Camera size={10} /> {imageCount}
+                        </span>
+                      )}
+                      {/* Price tag */}
+                      <span className="absolute bottom-2 left-2 text-[12px] bg-white/90 backdrop-blur-sm text-[#181510] px-2 py-0.5 rounded-md shadow-sm" style={{ fontWeight: 700 }}>
+                        ₪{product.price.toLocaleString()}/{product.unit}
+                      </span>
+                    </div>
+
+                    {/* Info */}
+                    <div className="p-4">
+                      <div className="text-[14px] text-[#181510] group-hover:text-[#ff8c00] transition-colors" style={{ fontWeight: 600 }}>{product.name}</div>
+                      <div className="text-[12px] text-[#8d785e] mt-1 line-clamp-2">{product.description}</div>
+                    </div>
                   </div>
-                  <div className="p-4">
-                    <div className="text-[14px] text-[#181510]" style={{ fontWeight: 600 }}>{product.name}</div>
-                    <div className="text-[12px] text-[#8d785e] mt-1">{product.description}</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -486,8 +562,7 @@ export function SupplierDetail() {
           const now = new Date();
           if (exp < now) return 'expired';
           const diff = exp.getTime() - now.getTime();
-          const daysLeft = diff / (1000 * 60 * 60 * 24);
-          if (daysLeft < 60) return 'warning';
+          if (diff / (1000 * 60 * 60 * 24) < 60) return 'warning';
           return 'valid';
         };
 
@@ -519,19 +594,13 @@ export function SupplierDetail() {
 
         return (
           <div className="bg-white rounded-xl border border-[#e7e1da] p-6">
-            {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-[20px] text-[#181510]" style={{ fontWeight: 700 }}>מסמכים ותקינות</h3>
-              <button
-                onClick={() => setActiveTab('docs')}
-                className="w-9 h-9 rounded-lg bg-[#f5f3f0] hover:bg-[#ece8e3] flex items-center justify-center transition-colors"
-                title="העלאה"
-              >
+              <button onClick={() => setActiveTab('docs')} className="w-9 h-9 rounded-lg bg-[#f5f3f0] hover:bg-[#ece8e3] flex items-center justify-center transition-colors" title="העלאה">
                 <Upload size={16} className="text-[#8d785e]" />
               </button>
             </div>
 
-            {/* 3 Required Document Cards */}
             <div className="space-y-4">
               {REQUIRED_DOCS.map(({ key: docName, shieldIcon: ShieldIcon }) => {
                 const doc = documents.find(d => d.name === docName);
@@ -545,127 +614,62 @@ export function SupplierDetail() {
 
                 return (
                   <div key={docName}>
-                    {/* Document Card */}
                     <div
                       className={`relative rounded-2xl border-2 p-5 transition-all ${
-                        !hasDoc
-                          ? 'border-dashed border-[#d4cdc3] bg-[#faf9f7] hover:border-[#ff8c00]/40 hover:bg-[#fffaf3] cursor-pointer'
-                          : isExpired
-                            ? 'border-red-200 bg-gradient-to-l from-red-50 to-red-50/30'
-                            : isWarning
-                              ? 'border-yellow-200 bg-gradient-to-l from-yellow-50 to-yellow-50/30'
-                              : 'border-green-200 bg-gradient-to-l from-green-50 to-green-50/30'
+                        !hasDoc ? 'border-dashed border-[#d4cdc3] bg-[#faf9f7] hover:border-[#ff8c00]/40 hover:bg-[#fffaf3] cursor-pointer' :
+                        isExpired ? 'border-red-200 bg-gradient-to-l from-red-50 to-red-50/30' :
+                        isWarning ? 'border-yellow-200 bg-gradient-to-l from-yellow-50 to-yellow-50/30' :
+                        'border-green-200 bg-gradient-to-l from-green-50 to-green-50/30'
                       }`}
-                      onClick={() => {
-                        if (!hasDoc && !isEditing) {
-                          setDocExpiryEditing(docName);
-                          setDocExpiryValue('');
-                        }
-                      }}
+                      onClick={() => { if (!hasDoc && !isEditing) { setDocExpiryEditing(docName); setDocExpiryValue(''); } }}
                     >
                       <div className="flex items-center justify-between">
-                        {/* Left: Status icon + Info */}
                         <div className="flex items-center gap-4">
-                          {/* Status Circle */}
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                            !hasDoc ? 'bg-[#ece8e3]' :
-                            isExpired ? 'bg-red-100' :
-                            isWarning ? 'bg-yellow-100' :
-                            'bg-green-100'
+                            !hasDoc ? 'bg-[#ece8e3]' : isExpired ? 'bg-red-100' : isWarning ? 'bg-yellow-100' : 'bg-green-100'
                           }`}>
-                            {!hasDoc ? (
-                              <Upload size={18} className="text-[#8d785e]" />
-                            ) : isExpired ? (
-                              <AlertTriangle size={18} className="text-red-500" />
-                            ) : (
-                              <CheckCircle size={18} className={isWarning ? 'text-yellow-500' : 'text-green-600'} />
-                            )}
+                            {!hasDoc ? <Upload size={18} className="text-[#8d785e]" /> :
+                             isExpired ? <AlertTriangle size={18} className="text-red-500" /> :
+                             <CheckCircle size={18} className={isWarning ? 'text-yellow-500' : 'text-green-600'} />}
                           </div>
-
-                          {/* Text */}
                           <div>
-                            <div className="text-[16px] text-[#181510]" style={{ fontWeight: 700 }}>
-                              {docName}
-                            </div>
+                            <div className="text-[16px] text-[#181510]" style={{ fontWeight: 700 }}>{docName}</div>
                             {hasDoc ? (
-                              <div className={`text-[13px] mt-0.5 ${
-                                isExpired ? 'text-red-500' : isWarning ? 'text-yellow-600' : 'text-green-600'
-                              }`} style={{ fontWeight: 500 }}>
-                                {isExpired
-                                  ? `פג תוקף ב-${formatExpiryDate(doc.expiry)}`
-                                  : `בתוקף עד: ${formatExpiryDate(doc.expiry)}`
-                                }
+                              <div className={`text-[13px] mt-0.5 ${isExpired ? 'text-red-500' : isWarning ? 'text-yellow-600' : 'text-green-600'}`} style={{ fontWeight: 500 }}>
+                                {isExpired ? `פג תוקף ב-${formatExpiryDate(doc.expiry)}` : `בתוקף עד: ${formatExpiryDate(doc.expiry)}`}
                               </div>
                             ) : (
-                              <div className="text-[13px] text-[#b8a990] mt-0.5">
-                                לא הועלה — לחץ להעלאה
-                              </div>
+                              <div className="text-[13px] text-[#b8a990] mt-0.5">לא הועלה — לחץ להעלאה</div>
                             )}
                           </div>
                         </div>
-
-                        {/* Right: Shield icon */}
                         <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                          !hasDoc ? 'bg-[#ece8e3]' :
-                          isExpired ? 'bg-red-100' :
-                          isWarning ? 'bg-yellow-100' :
-                          'bg-green-100'
+                          !hasDoc ? 'bg-[#ece8e3]' : isExpired ? 'bg-red-100' : isWarning ? 'bg-yellow-100' : 'bg-green-100'
                         }`}>
-                          {!hasDoc ? (
-                            <Shield size={22} className="text-[#b8a990]" />
-                          ) : isExpired ? (
-                            <ShieldAlert size={22} className="text-red-500" />
-                          ) : (
-                            <ShieldIcon size={22} className={isWarning ? 'text-yellow-500' : 'text-green-600'} />
-                          )}
+                          {!hasDoc ? <Shield size={22} className="text-[#b8a990]" /> :
+                           isExpired ? <ShieldAlert size={22} className="text-red-500" /> :
+                           <ShieldIcon size={22} className={isWarning ? 'text-yellow-500' : 'text-green-600'} />}
                         </div>
                       </div>
-
-                      {/* Uploaded file name */}
                       {hasDoc && doc.fileName && (
                         <div className="flex items-center gap-2 mt-3 mr-14">
                           <FileText size={12} className="text-[#8d785e]" />
                           <span className="text-[11px] text-[#8d785e]">{doc.fileName}</span>
                         </div>
                       )}
-
-                      {/* Action buttons for existing doc */}
                       {hasDoc && !isEditing && (
                         <div className="flex items-center gap-2 mt-3 mr-14">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDocExpiryEditing(docName);
-                              setDocExpiryValue(doc.expiry);
-                            }}
-                            className="text-[11px] text-[#ff8c00] hover:text-[#e67e00] transition-colors flex items-center gap-1"
-                            style={{ fontWeight: 600 }}
-                          >
-                            <CalendarDays size={12} />
-                            עדכן תוקף
+                          <button onClick={(e) => { e.stopPropagation(); setDocExpiryEditing(docName); setDocExpiryValue(doc.expiry); }} className="text-[11px] text-[#ff8c00] hover:text-[#e67e00] transition-colors flex items-center gap-1" style={{ fontWeight: 600 }}>
+                            <CalendarDays size={12} /> עדכן תוקף
                           </button>
                           <span className="text-[#e7e1da]">|</span>
                           <label className="text-[11px] text-[#ff8c00] hover:text-[#e67e00] transition-colors flex items-center gap-1 cursor-pointer" style={{ fontWeight: 600 }}>
-                            <Upload size={12} />
-                            החלף קובץ
-                            <input
-                              type="file"
-                              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                              className="hidden"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  handleUploadDoc(docName, doc.expiry, file.name);
-                                }
-                                e.target.value = '';
-                              }}
-                            />
+                            <Upload size={12} /> החלף קובץ
+                            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) handleUploadDoc(docName, doc.expiry, file.name); e.target.value = ''; }} />
                           </label>
                         </div>
                       )}
                     </div>
-
-                    {/* Expiry Edit / Upload Form */}
                     {isEditing && (
                       <div className="mt-3 bg-[#f8f7f5] border border-[#e7e1da] rounded-xl p-4 space-y-3">
                         <div className="text-[13px] text-[#181510]" style={{ fontWeight: 600 }}>
@@ -674,37 +678,15 @@ export function SupplierDetail() {
                         <div className="grid sm:grid-cols-2 gap-3">
                           <div>
                             <label className="block text-[12px] text-[#8d785e] mb-1" style={{ fontWeight: 600 }}>תאריך תוקף</label>
-                            <input
-                              type="date"
-                              value={docExpiryValue}
-                              onChange={(e) => setDocExpiryValue(e.target.value)}
-                              className="w-full bg-white border border-[#e7e1da] rounded-lg px-3 py-2.5 text-[13px] text-[#181510] focus:outline-none focus:border-[#ff8c00] focus:ring-2 focus:ring-[#ff8c00]/10 transition-all"
-                            />
+                            <input type="date" value={docExpiryValue} onChange={(e) => setDocExpiryValue(e.target.value)} className="w-full bg-white border border-[#e7e1da] rounded-lg px-3 py-2.5 text-[13px] text-[#181510] focus:outline-none focus:border-[#ff8c00] focus:ring-2 focus:ring-[#ff8c00]/10 transition-all" />
                           </div>
                           {!hasDoc && (
                             <div>
                               <label className="block text-[12px] text-[#8d785e] mb-1" style={{ fontWeight: 600 }}>קובץ מסמך</label>
                               <label className="flex items-center gap-2 bg-white border border-[#e7e1da] hover:border-[#ff8c00]/40 rounded-lg px-3 py-2.5 cursor-pointer transition-colors">
                                 <Upload size={14} className="text-[#8d785e]" />
-                                <span className="text-[13px] text-[#8d785e]">
-                                  {docExpiryValue ? 'בחר קובץ...' : 'בחר קובץ...'}
-                                </span>
-                                <input
-                                  type="file"
-                                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file && docExpiryValue) {
-                                      handleUploadDoc(docName, docExpiryValue, file.name);
-                                      setDocExpiryEditing(null);
-                                      setDocExpiryValue('');
-                                    } else if (file && !docExpiryValue) {
-                                      appToast.warning('נא לבחור תאריך תוקף לפני העלאה');
-                                    }
-                                    e.target.value = '';
-                                  }}
-                                />
+                                <span className="text-[13px] text-[#8d785e]">בחר קובץ...</span>
+                                <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file && docExpiryValue) { handleUploadDoc(docName, docExpiryValue, file.name); setDocExpiryEditing(null); setDocExpiryValue(''); } else if (file && !docExpiryValue) { appToast.warning('נא לבחור תאריך תוקף לפני העלאה'); } e.target.value = ''; }} />
                               </label>
                             </div>
                           )}
@@ -712,13 +694,7 @@ export function SupplierDetail() {
                         <div className="flex items-center gap-2">
                           {hasDoc && (
                             <button
-                              onClick={() => {
-                                if (docExpiryValue) {
-                                  handleUploadDoc(docName, docExpiryValue, doc.fileName || '');
-                                  setDocExpiryEditing(null);
-                                  setDocExpiryValue('');
-                                }
-                              }}
+                              onClick={() => { if (docExpiryValue) { handleUploadDoc(docName, docExpiryValue, doc.fileName || ''); setDocExpiryEditing(null); setDocExpiryValue(''); } }}
                               disabled={!docExpiryValue || isSaving}
                               className="text-[12px] text-white bg-[#ff8c00] hover:bg-[#e67e00] disabled:opacity-50 px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5"
                               style={{ fontWeight: 600 }}
@@ -727,11 +703,7 @@ export function SupplierDetail() {
                               {isSaving ? 'שומר...' : 'שמור'}
                             </button>
                           )}
-                          <button
-                            onClick={() => { setDocExpiryEditing(null); setDocExpiryValue(''); }}
-                            className="text-[12px] text-[#8d785e] hover:text-[#181510] px-3 py-2 rounded-lg transition-colors"
-                            style={{ fontWeight: 600 }}
-                          >
+                          <button onClick={() => { setDocExpiryEditing(null); setDocExpiryValue(''); }} className="text-[12px] text-[#8d785e] hover:text-[#181510] px-3 py-2 rounded-lg transition-colors" style={{ fontWeight: 600 }}>
                             ביטול
                           </button>
                         </div>
@@ -742,7 +714,6 @@ export function SupplierDetail() {
               })}
             </div>
 
-            {/* Additional documents beyond the 3 required */}
             {documents.filter(d => !['רישיון עסק', 'תעודת כשרות', "ביטוח צד ג'"].includes(d.name)).length > 0 && (
               <div className="mt-6 pt-5 border-t border-[#e7e1da]">
                 <h4 className="text-[14px] text-[#181510] mb-3" style={{ fontWeight: 600 }}>מסמכים נוספים</h4>
@@ -817,6 +788,43 @@ export function SupplierDetail() {
                 <button type="button" onClick={() => { setShowAddProduct(false); productForm.reset(); }} className="px-5 border border-[#e7e1da] rounded-xl hover:bg-[#f5f3f0] transition-colors">ביטול</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Product Editor Drawer ═══ */}
+      {editingProduct && id && (
+        <ProductEditor
+          product={editingProduct}
+          supplierId={id}
+          isOpen={!!editingProduct}
+          onClose={() => setEditingProduct(null)}
+          onUpdate={handleProductUpdate}
+        />
+      )}
+
+      {/* ═══ Archive Confirm Modal ═══ */}
+      {showArchiveConfirm && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => { setShowArchiveConfirm(false); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[20px] text-[#181510]" style={{ fontWeight: 700 }}>העברה לארכיון</h3>
+              <button onClick={() => { setShowArchiveConfirm(false); }} className="text-[#8d785e] hover:text-[#181510]"><X size={20} /></button>
+            </div>
+            <div className="space-y-4">
+              <p className="text-[14px] text-[#8d785e]">האם אתה בטוח שברצונך להעביר את הספק <strong className="text-[#181510]">{supplier?.name}</strong> לארכיון? הספק לא יופיע יותר בבנק הספקים, אך ניתן יהיה לשחזר אותו מעמוד הארכיון.</p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={archiveSupplier}
+                  disabled={archiving}
+                  className="flex-1 bg-[#ff8c00] hover:bg-[#e67e00] disabled:opacity-50 text-white py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2" style={{ fontWeight: 600 }}
+                >
+                  {archiving ? <Loader2 size={16} className="animate-spin" /> : <Archive size={16} />}
+                  {archiving ? 'מעביר...' : 'העבר לארכיון'}
+                </button>
+                <button type="button" onClick={() => { setShowArchiveConfirm(false); }} className="px-5 border border-[#e7e1da] rounded-xl hover:bg-[#f5f3f0] transition-colors">ביטול</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

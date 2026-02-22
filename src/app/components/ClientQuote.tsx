@@ -1,8 +1,9 @@
 import { publicApi } from './api';
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router';
-import { ChevronDown, ChevronUp, Check, ArrowRight, Share2, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Check, ArrowRight, Share2, Loader2, Printer } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { appToast } from './AppToast';
 
 const PLANT_IMG = 'https://images.unsplash.com/photo-1555758826-ce21b7e51ccf?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0cm9waWNhbCUyMHBsYW50JTIwbGVhdmVzJTIwZ3JlZW58ZW58MXx8fHwxNzcxMzgwNzUzfDA&ixlib=rb-4.1.0&q=80&w=1080';
 const VINEYARD_IMG = 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080';
@@ -165,8 +166,9 @@ export function ClientQuote() {
           </button>
           <button
             onClick={() => window.print()}
-            className="text-[12px] text-white bg-[#ff8c00] hover:bg-[#e67e00] px-3 py-1.5 rounded-lg transition-colors" style={{ fontWeight: 600 }}>
-            🖨 הדפס
+            className="text-[12px] text-white bg-[#ff8c00] hover:bg-[#e67e00] px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5" style={{ fontWeight: 600 }}>
+            <Printer size={13} />
+            הדפס
           </button>
         </div>
       </div>
@@ -306,7 +308,7 @@ export function ClientQuote() {
                     await navigator.share({ title: `הצעת מחיר — ${projectName}`, url: window.location.href });
                   } else {
                     await navigator.clipboard.writeText(window.location.href);
-                    alert('קישור ההצעה הועתק ללוח!');
+                    appToast.success('קישור הועתק', 'קישור ההצעה הועתק ללוח');
                   }
                 } catch {}
               }}
