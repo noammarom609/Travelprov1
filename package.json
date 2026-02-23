@@ -82,6 +82,12 @@
   "pnpm": {
     "overrides": {
       "vite": "6.3.5"
+    },
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "react": "18",
+        "react-dom": "18"
+      }
     }
   }
 }
