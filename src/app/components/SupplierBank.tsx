@@ -12,6 +12,7 @@ import { SupplierMap } from './SupplierMap';
 import { FormField, FormSelect, rules } from './FormField';
 import { computeAutoNotesFromSummary, noteLevelStyles } from './supplierNotes';
 import type { SupplierSummary } from './supplierNotes';
+import { CategoryIcon } from './CategoryIcons';
 
 interface NewSupplierForm {
   name: string;
@@ -20,8 +21,21 @@ interface NewSupplierForm {
   phone: string;
 }
 
-const categories = ['כל הקטגוריות', 'תחבורה', 'מזון', 'אטרקציות', 'לינה', 'בידור'];
+const categories = ['כל הקטגוריות', 'תחבורה', 'מזון', 'אטרקציות', 'לינה', 'אולמות וגנים', 'צילום', 'מוזיקה', 'ציוד', 'כללי', 'בידור'];
 const regions = ['כל הארץ', 'צפון', 'מרכז', 'ירושלים', 'דרום'];
+
+const CATEGORY_COLOR_MAP: Record<string, { color: string }> = {
+  'תחבורה': { color: '#3b82f6' },
+  'מזון': { color: '#22c55e' },
+  'אטרקציות': { color: '#a855f7' },
+  'לינה': { color: '#ec4899' },
+  'אולמות וגנים': { color: '#f97316' },
+  'צילום': { color: '#06b6d4' },
+  'מוזיקה': { color: '#8b5cf6' },
+  'ציוד': { color: '#64748b' },
+  'כללי': { color: '#8d785e' },
+  'בידור': { color: '#e11d48' },
+};
 const statuses = ['הכל', 'מאומת', 'ממתין', 'לא מאומת'];
 
 export function SupplierBank() {
@@ -40,6 +54,7 @@ export function SupplierBank() {
 
   // ─── New supplier form state ───
   const [saving, setSaving] = useState(false);
+  const [newSupplierCategories, setNewSupplierCategories] = useState<string[]>(['תחבורה']);
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
@@ -74,17 +89,23 @@ export function SupplierBank() {
   }, []);
 
   const onSubmitSupplier = async (data: NewSupplierForm) => {
+    if (newSupplierCategories.length === 0) return;
     try {
       setSaving(true);
+      const categoryStr = newSupplierCategories.join(',');
+      const primaryCat = CATEGORY_COLOR_MAP[newSupplierCategories[0]];
       await suppliersApi.create({
         name: data.name.trim(),
-        category: data.category,
+        category: categoryStr,
+        categoryColor: primaryCat?.color || '#8d785e',
+        icon: newSupplierCategories[0] || 'כללי',
         region: data.region,
         phone: data.phone.trim(),
       });
       appToast.success('הספק נוסף בהצלחה למאגר', 'ניתן כעת לשייך אותו לפרויקטים');
       setShowAddSupplier(false);
       resetSupplierForm();
+      setNewSupplierCategories(['תחבורה']);
       fetchSuppliers();
     } catch (err) {
       console.error('[SupplierBank] Failed to create supplier:', err);
@@ -98,8 +119,9 @@ export function SupplierBank() {
   const filtered = suppliers.filter(s => {
     // Filter out archived suppliers
     if (s.category === 'ארכיון') return false;
+    const cats = s.category.split(',').map(c => c.trim());
     const matchesSearch = !search || s.name.includes(search) || s.category.includes(search) || s.region.includes(search);
-    const matchesCategory = selectedCategory === 'כל הקטגוריות' || s.category === selectedCategory;
+    const matchesCategory = selectedCategory === 'כל הקטגוריות' || cats.includes(selectedCategory);
     const matchesRegion = selectedRegion === 'כל הארץ' || s.region === selectedRegion;
     const matchesStatus = selectedStatus === 'הכל' ||
       (selectedStatus === 'מאומת' && s.verificationStatus === 'verified') ||
@@ -132,7 +154,7 @@ export function SupplierBank() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-[#ff8c00]/10 rounded-xl flex items-center justify-center">
-            <span className="text-[20px]">🏛️</span>
+            <CategoryIcon category="אולמות וגנים" size={22} color="#ff8c00" />
           </div>
           <h1 className="text-[26px] text-[#181510]" style={{ fontWeight: 700 }}>בנק ספקים</h1>
         </div>
@@ -240,8 +262,8 @@ export function SupplierBank() {
                 <tr key={supplier.id} className="border-b border-[#ece8e3] hover:bg-[#f5f3f0]/50 transition-colors">
                   <td className="p-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg flex items-center justify-center text-[16px]" style={{ backgroundColor: supplier.categoryColor + '15' }}>
-                        {supplier.icon}
+                      <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: supplier.categoryColor + '15' }}>
+                        <CategoryIcon category={supplier.category.split(',')[0]?.trim() || supplier.category} size={18} color={supplier.categoryColor} />
                       </div>
                       <div>
                         <div className="text-[14px] text-[#181510]" style={{ fontWeight: 600 }}>{supplier.name}</div>
@@ -250,9 +272,18 @@ export function SupplierBank() {
                     </div>
                   </td>
                   <td className="p-3">
-                    <span className="text-[12px] px-2.5 py-1 rounded-full" style={{ backgroundColor: supplier.categoryColor + '15', color: supplier.categoryColor, fontWeight: 600 }}>
-                      {supplier.category}
-                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {supplier.category.split(',').map(c => c.trim()).filter(Boolean).map(cat => {
+                        const cm = CATEGORY_COLOR_MAP[cat];
+                        const color = cm?.color || supplier.categoryColor || '#8d785e';
+                        return (
+                          <span key={cat} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full" style={{ backgroundColor: color + '15', color, fontWeight: 600 }}>
+                            <CategoryIcon category={cat} size={12} color={color} />
+                            {cat}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </td>
                   <td className="p-3 text-[13px] text-[#6b5d45]">{supplier.region}</td>
                   <td className="p-3">
@@ -306,7 +337,7 @@ export function SupplierBank() {
                       <button onClick={() => navigate(`/suppliers/${supplier.id}`)} className="p-1.5 text-[#8d785e] hover:text-[#ff8c00] hover:bg-[#ff8c00]/10 rounded-lg transition-all"><Eye size={15} /></button>
                       <button onClick={() => navigate(`/suppliers/${supplier.id}`)} className="p-1.5 text-[#8d785e] hover:text-[#ff8c00] hover:bg-[#ff8c00]/10 rounded-lg transition-all"><Edit2 size={15} /></button>
                       <button onClick={() => {
-                        const text = `${supplier.name}\nקטגוריה: ${supplier.category}\nאזור: ${supplier.region}\nטלפון: ${supplier.phone}\nדירוג: ${supplier.rating}`;
+                        const text = `${supplier.name}\nקטגוריות: ${supplier.category.split(',').map(c => c.trim()).join(', ')}\nאזור: ${supplier.region}\nטלפון: ${supplier.phone}\nדירוג: ${supplier.rating}`;
                         navigator.clipboard.writeText(text).then(() => {
                           appToast.info('הספק הועתק', `פרטי "${supplier.name}" הועתקו ללוח`);
                         }).catch(() => appToast.info('הספק הועתק', 'פרטי הספק הועתקו ללוח'));
@@ -385,24 +416,66 @@ export function SupplierBank() {
                 placeholder="שם הספק"
                 {...register('name', rules.requiredMin('שם הספק', 2))}
               />
-              <div className="grid grid-cols-2 gap-3">
-                <FormSelect
-                  label="קטגוריה"
-                  error={errors.category}
-                  isDirty={dirtyFields.category}
-                  {...register('category')}
-                >
-                  {categories.filter(c => c !== 'כל הקטגוריות').map(c => <option key={c}>{c}</option>)}
-                </FormSelect>
-                <FormSelect
-                  label="אזור"
-                  error={errors.region}
-                  isDirty={dirtyFields.region}
-                  {...register('region')}
-                >
-                  {regions.filter(r => r !== 'כל הארץ').map(r => <option key={r}>{r}</option>)}
-                </FormSelect>
+              {/* קטגוריות — multi-select */}
+              <div>
+                <label className="text-[13px] text-[#8d785e] mb-2 block" style={{ fontWeight: 600 }}>
+                  קטגוריות <span className="text-[#ff8c00]">*</span>
+                  {newSupplierCategories.length > 0 && (
+                    <span className="text-[11px] text-[#b5a48b] mr-1" style={{ fontWeight: 400 }}>({newSupplierCategories.length} נבחרו)</span>
+                  )}
+                </label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {Object.entries(CATEGORY_COLOR_MAP).map(([cat, { color }]) => {
+                    const isSelected = newSupplierCategories.includes(cat);
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => {
+                          setNewSupplierCategories(prev =>
+                            prev.includes(cat)
+                              ? prev.filter(c => c !== cat)
+                              : [...prev, cat]
+                          );
+                        }}
+                        className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-[12px] transition-all ${
+                          isSelected
+                            ? 'border-[#ff8c00] bg-[#ff8c00]/10 shadow-sm'
+                            : 'border-[#e7e1da] bg-white hover:border-[#d5cdc0] hover:bg-[#faf9f7]'
+                        }`}
+                        style={{ fontWeight: isSelected ? 600 : 400 }}
+                      >
+                        <div
+                          className={`w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0 border transition-all ${
+                            isSelected
+                              ? 'bg-[#ff8c00] border-[#ff8c00]'
+                              : 'border-[#d5cdc0] bg-white'
+                          }`}
+                        >
+                          {isSelected && (
+                            <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                              <path d="M2 5L4.2 7.5L8 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </div>
+                        <CategoryIcon category={cat} size={14} color={isSelected ? color : '#8d785e'} />
+                        <span className={isSelected ? 'text-[#181510]' : 'text-[#6b5d45]'}>{cat}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {newSupplierCategories.length === 0 && (
+                  <p className="text-[11px] text-red-500 mt-1">יש לבחור לפחות קטגוריה אחת</p>
+                )}
               </div>
+              <FormSelect
+                label="אזור"
+                error={errors.region}
+                isDirty={dirtyFields.region}
+                {...register('region')}
+              >
+                {regions.filter(r => r !== 'כל הארץ').map(r => <option key={r}>{r}</option>)}
+              </FormSelect>
               <FormField
                 label="טלפון"
                 placeholder="05X-XXXXXXX"
@@ -413,7 +486,7 @@ export function SupplierBank() {
               <div className="flex gap-3 pt-2">
                 <button
                   type="submit"
-                  disabled={saving || !isValid}
+                  disabled={saving || !isValid || newSupplierCategories.length === 0}
                   className="flex-1 bg-[#ff8c00] hover:bg-[#e67e00] disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
                   style={{ fontWeight: 600 }}
                 >

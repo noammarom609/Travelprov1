@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Loader2, LogIn, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import imgLogo from "../../assets/b655d2164f14a54b258c6a8a069f10a88a1c4640.png";
+import imgLogo from "figma:asset/b655d2164f14a54b258c6a8a069f10a88a1c4640.png";
 import { useAuth } from './AuthContext';
 import { FormField, rules } from './FormField';
 

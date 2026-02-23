@@ -76,8 +76,8 @@ const FEATURE_OPTIONS = [
   'מערכת תמונות ואחסון',
 ];
 
-const STORAGE_KEY = 'travelpro-kanban-v10';
-const KANBAN_SEED_VERSION = 'v10'; // Bump to seed new INITIAL_TASKS to server
+const STORAGE_KEY = 'travelpro-kanban-v11';
+const KANBAN_SEED_VERSION = 'v11'; // Bump to seed new INITIAL_TASKS to server
 
 const VERSION_TABS: { id: Version; label: string; subtitle: string; color: string }[] = [
   { id: 'V1', label: 'V1', subtitle: 'MVP — 9 מסכים', color: '#ff8c00' },
@@ -369,6 +369,11 @@ const INITIAL_TASKS: Task[] = [
     id: 'd30', title: 'מערכת אישור מחיקה גלובלית — הקלדת "מחיקה"',
     description: 'קומפוננט ConfirmDeleteModal.tsx עם hook useConfirmDelete — בכל פעולת מחיקה במערכת עולה מודאל שדורש הקלדת המילה "מחיקה" לפני אישור. שולב ב-7 קבצים: ProjectsList (מחיקת פרויקט), QuoteEditor (מחיקת רכיב הצעה), SupplierDetail (מחיקת איש קשר ומוצר), ItemEditor ו-ProductEditor (מחיקת תמונות), KanbanBoard (מחיקת משימה וקבצים מצורפים), SupplierLocationMap (מחיקת מיקום). כולל אנימציית Motion, auto-focus, תמיכה ב-Enter/Escape ומצב loading.',
     type: 'TASK', priority: 'HIGH', status: 'done', feature: 'תשתית כללית', estimate: '2h', tags: ['UX', 'אבטחה', 'תשתית'], createdAt: '2026-02-22', version: 'V1',
+  },
+  {
+    id: 'd31', title: 'מולטי-קטגוריה לספקים — checkboxes במקום dropdown',
+    description: 'שדה הקטגוריה בכרטיס ספק הפך ל-multi-select עם checkboxes (grid 3 עמודות) — כל ספק יכול לספק כמה שירותים. השינוי חל על מודאל עריכת ספק (SupplierDetail), טופס הוספת ספק חדש (SupplierBank), תצוגת badges בטבלה ובהדר הספק, ומנגנון סינון לפי קטגוריה. הקטגוריות נשמרות כ-comma-separated string עם תאימות אחורית.',
+    type: 'FEATURE', priority: 'HIGH', status: 'done', feature: 'בנק ספקים', estimate: '1.5h', tags: ['בנק ספקים', 'UX', 'כרטיס ספק'], createdAt: '2026-02-22', version: 'V1',
   },
 
   // ════════════════════════════════════════

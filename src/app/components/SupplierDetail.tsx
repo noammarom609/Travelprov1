@@ -18,6 +18,7 @@ import { SupplierLocationMap } from './SupplierLocationMap';
 import { computeAutoNotes, noteLevelStyles } from './supplierNotes';
 import type { AutoNote } from './supplierNotes';
 import { useConfirmDelete } from './ConfirmDeleteModal';
+import { CategoryIcon } from './CategoryIcons';
 
 const VINEYARD_IMG = 'https://images.unsplash.com/photo-1762330465953-75478d918896?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx2aW5leWFyZCUyMGdyYXBlJTIwaGlsbHNpZGUlMjBncmVlbnxlbnwxfHx8fDE3NzE0NjgyNDJ8MA&ixlib=rb-4.1.0&q=80&w=1080';
 
@@ -34,16 +35,22 @@ interface AddContactForm { contactName: string; contactRole: string; contactPhon
 interface AddProductForm { productName: string; productPrice: string; productDescription: string; productUnit: string; }
 interface EditSupplierForm { name: string; phone: string; category: string; categoryColor: string; region: string; rating: string; verificationStatus: string; notes: string; icon: string; }
 
+// Helper: parse comma-separated categories
+function parseCategories(cat: string | undefined): string[] {
+  if (!cat) return [];
+  return cat.split(',').map(c => c.trim()).filter(Boolean);
+}
+
 const CATEGORY_OPTIONS = [
-  { value: 'תחבורה', color: '#3b82f6', icon: '🚌' },
-  { value: 'מזון', color: '#22c55e', icon: '🍽️' },
-  { value: 'אטרקציות', color: '#a855f7', icon: '🎯' },
-  { value: 'לינה', color: '#ec4899', icon: '🏨' },
-  { value: 'אולמות וגנים', color: '#f97316', icon: '🏛️' },
-  { value: 'צילום', color: '#06b6d4', icon: '📸' },
-  { value: 'מוזיקה', color: '#8b5cf6', icon: '🎵' },
-  { value: 'ציוד', color: '#64748b', icon: '🔧' },
-  { value: 'כללי', color: '#8d785e', icon: '📦' },
+  { value: 'תחבורה', color: '#3b82f6' },
+  { value: 'מזון', color: '#22c55e' },
+  { value: 'אטרקציות', color: '#a855f7' },
+  { value: 'לינה', color: '#ec4899' },
+  { value: 'אולמות וגנים', color: '#f97316' },
+  { value: 'צילום', color: '#06b6d4' },
+  { value: 'מוזיקה', color: '#8b5cf6' },
+  { value: 'ציוד', color: '#64748b' },
+  { value: 'כללי', color: '#8d785e' },
 ];
 
 const REGION_OPTIONS = ['צפון', 'מרכז', 'דרום', 'ירושלים', 'גולן', 'שפלה', 'שרון', 'נגב', 'אילת', 'יהודה ושומרון'];
@@ -77,6 +84,7 @@ export function SupplierDetail() {
   // Edit supplier
   const [showEditSupplier, setShowEditSupplier] = useState(false);
   const [savingSupplier, setSavingSupplier] = useState(false);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
   const contactForm = useForm<AddContactForm>({ mode: 'onChange', defaultValues: { contactName: '', contactRole: '', contactPhone: '', contactEmail: '' } });
   const productForm = useForm<AddProductForm>({ mode: 'onChange', defaultValues: { productName: '', productPrice: '', productDescription: '', productUnit: 'אדם' } });
@@ -253,7 +261,7 @@ export function SupplierDetail() {
             <ArrowRight size={20} />
           </button>
           <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: supplier.categoryColor + '15' }}>
-            <span className="text-[24px]">{supplier.icon}</span>
+            <CategoryIcon category={parseCategories(supplier.category)[0] || supplier.category} size={24} color={supplier.categoryColor} />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -271,6 +279,7 @@ export function SupplierDetail() {
                     notes: supplier.notes || '',
                     icon: supplier.icon || '',
                   });
+                  setSelectedCategories(parseCategories(supplier.category));
                   setShowEditSupplier(true);
                 }}
                 className="flex items-center gap-1 text-[12px] text-[#ff8c00] hover:text-[#e67e00] bg-[#ff8c00]/10 hover:bg-[#ff8c00]/20 px-2.5 py-1 rounded-lg transition-all"
@@ -282,10 +291,24 @@ export function SupplierDetail() {
                 <VerifIcon size={12} /> {statusLabel[supplier.verificationStatus]}
               </span>
             </div>
-            <p className="text-[13px] text-[#8d785e]">
-              {supplier.icon} {supplier.category} &bull; {supplier.region}
-              {supplier.phone && <> &bull; {supplier.phone}</>}
-            </p>
+            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+              {parseCategories(supplier.category).map(cat => {
+                const opt = CATEGORY_OPTIONS.find(o => o.value === cat);
+                const catColor = opt?.color || '#8d785e';
+                return (
+                  <span
+                    key={cat}
+                    className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: catColor + '15', color: catColor, fontWeight: 600 }}
+                  >
+                    <CategoryIcon category={cat} size={12} color={catColor} />
+                    {cat}
+                  </span>
+                );
+              })}
+              <span className="text-[13px] text-[#8d785e]">&bull; {supplier.region}</span>
+              {supplier.phone && <span className="text-[13px] text-[#8d785e]">&bull; {supplier.phone}</span>}
+            </div>
           </div>
         </div>
         {!isArchived && (
@@ -629,9 +652,9 @@ export function SupplierDetail() {
       {/* ═══ Docs Tab ═══ */}
       {activeTab === 'docs' && (() => {
         const REQUIRED_DOCS = [
-          { key: 'רישיון עסק', icon: '📄', shieldIcon: ShieldCheck },
-          { key: 'תעודת כשרות', icon: '🏅', shieldIcon: ShieldCheck },
-          { key: "ביטוח צד ג'", icon: '🛡️', shieldIcon: Shield },
+          { key: 'רישיון עסק', shieldIcon: ShieldCheck },
+          { key: 'תעודת כשרות', shieldIcon: ShieldCheck },
+          { key: "ביטוח צד ג'", shieldIcon: Shield },
         ] as const;
 
         const getDocStatus = (expiry: string): 'valid' | 'warning' | 'expired' => {
@@ -925,20 +948,21 @@ export function SupplierDetail() {
             </div>
             <form
               onSubmit={editSupplierForm.handleSubmit(async (data: EditSupplierForm) => {
-                if (!id) return;
+                if (!id || selectedCategories.length === 0) return;
                 try {
                   setSavingSupplier(true);
-                  const catOption = CATEGORY_OPTIONS.find(c => c.value === data.category);
+                  const categoryStr = selectedCategories.join(',');
+                  const primaryCat = CATEGORY_OPTIONS.find(c => c.value === selectedCategories[0]);
                   const updated = await suppliersApi.update(id, {
                     name: data.name.trim(),
                     phone: data.phone.trim(),
-                    category: data.category,
-                    categoryColor: catOption?.color || data.categoryColor,
+                    category: categoryStr,
+                    categoryColor: primaryCat?.color || data.categoryColor,
                     region: data.region,
                     rating: parseFloat(data.rating) || supplier!.rating,
                     verificationStatus: data.verificationStatus as Supplier['verificationStatus'],
                     notes: data.notes.trim() || '-',
-                    icon: catOption?.icon || data.icon,
+                    icon: selectedCategories[0] || data.icon,
                   });
                   setSupplier(updated);
                   setShowEditSupplier(false);
@@ -967,29 +991,69 @@ export function SupplierDetail() {
                 {...editSupplierForm.register('phone')}
               />
 
-              <div className="grid grid-cols-2 gap-3">
-                <FormSelect
-                  label="קטגוריה"
-                  error={editSupplierForm.formState.errors.category}
-                  isDirty={editSupplierForm.formState.dirtyFields.category}
-                  {...editSupplierForm.register('category', { required: 'קטגוריה היא שדה חובה' })}
-                >
-                  {CATEGORY_OPTIONS.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.icon} {opt.value}</option>
-                  ))}
-                </FormSelect>
-
-                <FormSelect
-                  label="אזור"
-                  error={editSupplierForm.formState.errors.region}
-                  isDirty={editSupplierForm.formState.dirtyFields.region}
-                  {...editSupplierForm.register('region', { required: 'אזור הוא שדה חובה' })}
-                >
-                  {REGION_OPTIONS.map(r => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </FormSelect>
+              {/* קטגוריות — multi-select */}
+              <div>
+                <label className="text-[13px] text-[#8d785e] mb-2 block" style={{ fontWeight: 600 }}>
+                  קטגוריות <span className="text-[#ff8c00]">*</span>
+                  {selectedCategories.length > 0 && (
+                    <span className="text-[11px] text-[#b5a48b] mr-1" style={{ fontWeight: 400 }}>({selectedCategories.length} נבחרו)</span>
+                  )}
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {CATEGORY_OPTIONS.map(opt => {
+                    const isSelected = selectedCategories.includes(opt.value);
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCategories(prev =>
+                            prev.includes(opt.value)
+                              ? prev.filter(c => c !== opt.value)
+                              : [...prev, opt.value]
+                          );
+                        }}
+                        className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-[12px] transition-all ${
+                          isSelected
+                            ? 'border-[#ff8c00] bg-[#ff8c00]/10 shadow-sm'
+                            : 'border-[#e7e1da] bg-white hover:border-[#d5cdc0] hover:bg-[#faf9f7]'
+                        }`}
+                        style={{ fontWeight: isSelected ? 600 : 400 }}
+                      >
+                        <div
+                          className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border transition-all ${
+                            isSelected
+                              ? 'bg-[#ff8c00] border-[#ff8c00]'
+                              : 'border-[#d5cdc0] bg-white'
+                          }`}
+                        >
+                          {isSelected && (
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                              <path d="M2 5L4.2 7.5L8 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </div>
+                        <CategoryIcon category={opt.value} size={16} color={isSelected ? opt.color : '#8d785e'} />
+                        <span className={isSelected ? 'text-[#181510]' : 'text-[#6b5d45]'}>{opt.value}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedCategories.length === 0 && (
+                  <p className="text-[11px] text-red-500 mt-1">יש לבחור לפחות קטגוריה אחת</p>
+                )}
               </div>
+
+              <FormSelect
+                label="אזור"
+                error={editSupplierForm.formState.errors.region}
+                isDirty={editSupplierForm.formState.dirtyFields.region}
+                {...editSupplierForm.register('region', { required: 'אזור הוא שדה חובה' })}
+              >
+                {REGION_OPTIONS.map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </FormSelect>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1035,7 +1099,7 @@ export function SupplierDetail() {
               <div className="flex gap-3 pt-2">
                 <button
                   type="submit"
-                  disabled={savingSupplier || !editSupplierForm.formState.isValid}
+                  disabled={savingSupplier || !editSupplierForm.formState.isValid || selectedCategories.length === 0}
                   className="flex-1 bg-[#ff8c00] hover:bg-[#e67e00] disabled:opacity-50 text-white py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
                   style={{ fontWeight: 600 }}
                 >

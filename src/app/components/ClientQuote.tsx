@@ -4,6 +4,7 @@ import { useParams } from 'react-router';
 import { ChevronDown, ChevronUp, Check, ArrowRight, Share2, Loader2, Printer } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { appToast } from './AppToast';
+import { CategoryIcon } from './CategoryIcons';
 
 const PLANT_IMG = 'https://images.unsplash.com/photo-1555758826-ce21b7e51ccf?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0cm9waWNhbCUyMHBsYW50JTIwbGVhdmVzJTIwZ3JlZW58ZW58MXx8fHwxNzcxMzgwNzUzfDA&ixlib=rb-4.1.0&q=80&w=1080';
 const VINEYARD_IMG = 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080';
@@ -57,7 +58,7 @@ export function ClientQuote() {
       title: 'ארוחת צהריים גורמה בטבע',
       subtitle: 'חוויה קולינרית גלילית',
       img: LUNCH_IMG,
-      provider: 'מסעדת "החווה הגלילית"',
+      provider: 'מסעדה "החווה הגלילית"',
       bullets: [
         'ארוחה במסעדת חווה ציורית בלב הטבע, שולחנות מוצלים מתחת לעצי אלון.',
         'תפריט שף עשיר: סלטי חווה טריים, בשרים על הגריל ותבשילים ביתיים.',
@@ -97,11 +98,11 @@ export function ClientQuote() {
 
   // Timeline from API or defaults
   const timelineItems = quoteData?.timeline && quoteData.timeline.length > 0
-    ? quoteData.timeline.map((t: any) => ({ time: t.time, title: t.title, emoji: t.icon }))
+    ? quoteData.timeline.map((t: any) => ({ time: t.time, title: t.title, iconKey: t.icon || t.title }))
     : [
-        { time: '09:00-12:00', title: 'סיור כרמים וטעימות', emoji: '🍷' },
-        { time: '13:00-14:00', title: 'ארוחת צהריים גורמה', emoji: '🍽️' },
-        { time: '15:00-18:00', title: 'הסעות VIP וסיום היום', emoji: '🚌' },
+        { time: '09:00-12:00', title: 'סיור כרמים וטעימות', iconKey: 'יקב' },
+        { time: '13:00-14:00', title: 'ארוחת צהריים גורמה', iconKey: 'מזון' },
+        { time: '15:00-18:00', title: 'הסעות VIP וסיום היום', iconKey: 'תחבורה' },
       ];
 
   const tips = [
@@ -199,7 +200,9 @@ export function ClientQuote() {
                 onClick={() => setExpandedTimeline(expandedTimeline === idx ? null : idx)}
                 className="flex items-center gap-3 p-4 border-2 border-[#ff8c00]/20 rounded-xl hover:border-[#ff8c00] transition-all bg-white"
               >
-                <span className="text-[20px]">{item.emoji}</span>
+                <span className="w-9 h-9 bg-[#ff8c00]/10 rounded-lg flex items-center justify-center text-[#ff8c00] shrink-0">
+                  <CategoryIcon category={item.iconKey} size={20} color="#ff8c00" />
+                </span>
                 <div className="text-right">
                   <div className="text-[14px] text-[#181510]" style={{ fontWeight: 600 }}>{item.title}</div>
                   <div className="text-[12px] text-[#ff8c00]" style={{ fontWeight: 600 }}>{item.time}</div>

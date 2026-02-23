@@ -30,33 +30,6 @@ export interface Project {
   date: string;
 }
 
-export type CalendarEventType = 'meeting' | 'deadline' | 'reminder' | 'personal';
-
-export interface CalendarEvent {
-  id: string;
-  title: string;
-  description: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  type: CalendarEventType;
-  color: string;
-  projectId?: string;
-}
-
-export interface Client {
-  id: string;
-  name: string;
-  company: string;
-  phone: string;
-  email: string;
-  status: 'active' | 'lead' | 'inactive';
-  notes: string;
-  totalProjects: number;
-  totalRevenue: number;
-  createdAt: string;
-}
-
 export interface QuoteVersion {
   id: string;
   version: number;

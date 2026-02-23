@@ -35,6 +35,26 @@ export function PlaceholderPage({ title, description, icon }: PlaceholderPagePro
   );
 }
 
+export function ClientsPage() {
+  return (
+    <PlaceholderPage
+      title="ניהול לקוחות"
+      description="מסך ניהול לקוחות, היסטוריית הזמנות ותקשורת - יהיה זמין בקרוב."
+      icon="👥"
+    />
+  );
+}
+
+export function DocumentsPage() {
+  return (
+    <PlaceholderPage
+      title="מסמכים"
+      description="ניהול מסמכים, חוזים והסכמים עם ספקים ולקוחות."
+      icon="📄"
+    />
+  );
+}
+
 export function SettingsPage() {
   return (
     <PlaceholderPage

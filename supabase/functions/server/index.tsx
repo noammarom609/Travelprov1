@@ -5,7 +5,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
 const app = new Hono();
-console.log("[Server] TravelPro Hono server starting...");
+console.log("[Server] TravelPro Hono server starting... (v6)");
 app.use("*", logger(console.log));
 app.use(
   "/*",
@@ -105,19 +105,19 @@ app.post(`${PREFIX}/signup`, async (c) => {
 // ─── SEED ─────────────────────────────────────────
 app.post(`${PREFIX}/seed`, async (c) => {
   try {
-    const alreadySeeded = await kv.get("_meta:seeded_v3");
+    const alreadySeeded = await kv.get("_meta:seeded_v6");
     if (alreadySeeded) return c.json({ data: { skipped: true } });
 
     await kv.mset(SEED_SUPPLIERS.map(s => `supplier:${s.id}`), SEED_SUPPLIERS);
     await kv.mset(SEED_PROJECTS.map(p => `project:${p.id}`), SEED_PROJECTS);
     await kv.mset(SEED_QUOTE_ITEMS.map(q => `quote_item:${q.id}`), SEED_QUOTE_ITEMS);
     await kv.mset(SEED_TIMELINE_EVENTS.map(t => `timeline_event:${t.id}`), SEED_TIMELINE_EVENTS);
-    await kv.mset(SEED_SUPPLIER_CONTACTS.map(c => `supplier_contact:${c.id}`), SEED_SUPPLIER_CONTACTS);
-    await kv.mset(SEED_SUPPLIER_PRODUCTS.map(p => `supplier_product:${p.id}`), SEED_SUPPLIER_PRODUCTS);
-    await kv.mset(SEED_SUPPLIER_DOCUMENTS.map(d => `supplier_document:${d.id}`), SEED_SUPPLIER_DOCUMENTS);
-    await kv.set("_meta:seeded_v3", { seededAt: new Date().toISOString() });
+    await kv.mset(SEED_SUPPLIER_CONTACTS.map(sc => `supplier_contact:${sc.id}`), SEED_SUPPLIER_CONTACTS);
+    await kv.mset(SEED_SUPPLIER_PRODUCTS.map(sp => `supplier_product:${sp.id}`), SEED_SUPPLIER_PRODUCTS);
+    await kv.mset(SEED_SUPPLIER_DOCUMENTS.map(sd => `supplier_document:${sd.id}`), SEED_SUPPLIER_DOCUMENTS);
+    await kv.set("_meta:seeded_v6", { seededAt: new Date().toISOString() });
 
-    console.log("[Seed] All data seeded (v3 with directPrice)");
+    console.log("[Seed] All data seeded (v6 with directPrice)");
     return c.json({ data: { skipped: false, suppliers: SEED_SUPPLIERS.length, projects: SEED_PROJECTS.length } });
   } catch (err) { console.log(`[Seed] Error: ${err}`); return c.json({ error: `Seed failed: ${err}` }, 500); }
 });

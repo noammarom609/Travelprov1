@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════
 
 import { projectId, publicAnonKey } from '/utils/supabase/info';
-import type { Supplier, Project, Client, CalendarEvent } from './data';
+import type { Supplier, Project } from './data';
 
 const BASE = `https://${projectId}.supabase.co/functions/v1/make-server-0045c7fc`;
 
@@ -195,31 +195,6 @@ export const projectsApi = {
     }),
 };
 
-// ─── Clients ────────────────────────────────────
-
-export const clientsApi = {
-  list: (): Promise<Client[]> => request<Client[]>('/clients'),
-
-  get: (id: string): Promise<Client> => request<Client>(`/clients/${encodeURIComponent(id)}`),
-
-  create: (data: Partial<Client>): Promise<Client> =>
-    request<Client>('/clients', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  update: (id: string, data: Partial<Client>): Promise<Client> =>
-    request<Client>(`/clients/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
-
-  delete: (id: string): Promise<{ success: boolean; id: string }> =>
-    request<{ success: boolean; id: string }>(`/clients/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    }),
-};
-
 // ─── Dashboard ───────────────────────────────────
 
 export interface DashboardStats {
@@ -384,72 +359,28 @@ export const kanbanApi = {
     }),
 };
 
-// ─── Project Documents ──────────────────────────
-
-export interface ProjectDocument {
-  id: string;
-  projectId: string;
-  name: string;
-  type: 'contract' | 'proposal' | 'agreement' | 'invoice' | 'other';
-  expiry?: string;
-  status: 'valid' | 'warning' | 'expired' | 'active';
-  fileName?: string;
-  createdAt?: string;
-}
-
-export const projectDocumentsApi = {
-  list: (projectId: string): Promise<ProjectDocument[]> =>
-    request<ProjectDocument[]>(`/projects/${encodeURIComponent(projectId)}/documents`),
-  create: (projectId: string, data: Partial<ProjectDocument>): Promise<ProjectDocument> =>
-    request<ProjectDocument>(`/projects/${encodeURIComponent(projectId)}/documents`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-  update: (projectId: string, docId: string, data: Partial<ProjectDocument>): Promise<ProjectDocument> =>
-    request<ProjectDocument>(`/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(docId)}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
-  delete: (projectId: string, docId: string): Promise<{ success: boolean; id: string }> =>
-    request<{ success: boolean; id: string }>(`/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(docId)}`, {
-      method: 'DELETE',
-    }),
-};
-
-// ─── Calendar Events ─────────────────────────────
-
-export const calendarApi = {
-  list: (): Promise<CalendarEvent[]> =>
-    request<CalendarEvent[]>('/calendar'),
-
-  get: (id: string): Promise<CalendarEvent> =>
-    request<CalendarEvent>(`/calendar/${encodeURIComponent(id)}`),
-
-  create: (data: Partial<CalendarEvent>): Promise<CalendarEvent> =>
-    request<CalendarEvent>('/calendar', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  update: (id: string, data: Partial<CalendarEvent>): Promise<CalendarEvent> =>
-    request<CalendarEvent>(`/calendar/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
-
-  delete: (id: string): Promise<{ success: boolean; id: string }> =>
-    request<{ success: boolean; id: string }>(`/calendar/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    }),
-};
-
 // ─── Seed ────────────────────────────────────────
 
 let _seedPromise: Promise<void> | null = null;
 
+async function seedWithRetry(attempts = 3, delayMs = 2000): Promise<any> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await request<any>('/seed', { method: 'POST' });
+    } catch (err) {
+      console.warn(`[TravelPro] Seed attempt ${i + 1}/${attempts} failed:`, err);
+      if (i < attempts - 1) {
+        await new Promise(r => setTimeout(r, delayMs));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 export function ensureSeeded(): Promise<void> {
   if (!_seedPromise) {
-    _seedPromise = request<any>('/seed', { method: 'POST' })
+    _seedPromise = seedWithRetry()
       .then((res) => {
         if (res?.skipped) {
           console.log('[TravelPro] Data already seeded');
@@ -458,7 +389,7 @@ export function ensureSeeded(): Promise<void> {
         }
       })
       .catch((err) => {
-        console.error('[TravelPro] Seed failed:', err);
+        console.error('[TravelPro] Seed failed after retries:', err);
         _seedPromise = null; // Allow retry
       });
   }
@@ -470,13 +401,10 @@ export function ensureSeeded(): Promise<void> {
 export const api = {
   suppliers: suppliersApi,
   projects: projectsApi,
-  clients: clientsApi,
   dashboard: dashboardApi,
   quoteItems: quoteItemsApi,
   timeline: timelineApi,
   public: publicApi,
   kanban: kanbanApi,
-  projectDocuments: projectDocumentsApi,
-  calendar: calendarApi,
   ensureSeeded,
 };

@@ -17,6 +17,7 @@ import type { QuoteItem, TimelineEvent } from './api';
 import type { Project } from './data';
 import { ItemEditor } from './ItemEditor';
 import { useConfirmDelete } from './ConfirmDeleteModal';
+import { CategoryIcon } from './CategoryIcons';
 
 const KAYAK_IMG = 'https://images.unsplash.com/photo-1550515710-9324b8e4262e?w=800';
 const BUS_IMG = 'https://images.unsplash.com/photo-1765739099920-81a456008253?w=800';
@@ -114,22 +115,10 @@ const TYPE_ICON_MAP: Record<string, React.ReactNode> = {
   'אחר': <Package size={16} />,
 };
 
-const EMOJI_TO_ICON: Record<string, React.ReactNode> = {
-  '🚌': <Bus size={16} />,
-  '🏨': <BedDouble size={16} />,
-  '🎯': <Compass size={16} />,
-  '🍽️': <UtensilsCrossed size={16} />,
-  '🎤': <Music size={16} />,
-  '📦': <Package size={16} />,
-  '🕐': <Clock size={16} />,
-  '🚐': <Bus size={16} />,
-  '🗺️': <MapPin size={16} />,
-};
-
 function getItemIcon(typeOrIcon: string): React.ReactNode {
   if (TYPE_ICON_MAP[typeOrIcon]) return TYPE_ICON_MAP[typeOrIcon];
-  if (EMOJI_TO_ICON[typeOrIcon]) return EMOJI_TO_ICON[typeOrIcon];
-  return <Package size={16} />;
+  // Use CategoryIcon for category name strings (replaces emoji lookup)
+  return <CategoryIcon category={typeOrIcon} size={16} color="currentColor" />;
 }
 
 function SectionIcon({ children, size = 'md' }: { children: React.ReactNode; size?: 'sm' | 'md' | 'lg' }) {
@@ -144,21 +133,24 @@ function SectionIcon({ children, size = 'md' }: { children: React.ReactNode; siz
 function TypeBadge({ type, iconStr, size = 'md' }: { type: string; iconStr?: string; size?: 'sm' | 'md' | 'lg' }) {
   const iconSize = size === 'sm' ? 13 : size === 'lg' ? 18 : 15;
   const dims = size === 'sm' ? 'w-7 h-7' : size === 'lg' ? 'w-10 h-10' : 'w-8 h-8';
-  const IconComponent = TYPE_ICON_MAP[type] || (iconStr && EMOJI_TO_ICON[iconStr]) || <Package size={iconSize} />;
+  const lucideIcon = TYPE_ICON_MAP[type];
   return (
     <span className={`${dims} bg-[#ff8c00]/10 rounded-lg flex items-center justify-center text-[#ff8c00] shrink-0`}>
-      {React.cloneElement(IconComponent as React.ReactElement, { size: iconSize })}
+      {lucideIcon
+        ? React.cloneElement(lucideIcon as React.ReactElement, { size: iconSize })
+        : <CategoryIcon category={iconStr || type} size={iconSize} color="#ff8c00" />
+      }
     </span>
   );
 }
 
 const COMPONENT_TYPES = [
-  { icon: '🚌', label: 'תחבורה', type: 'תחבורה' },
-  { icon: '🏨', label: 'לינה', type: 'לינה' },
-  { icon: '🎯', label: 'פעילות', type: 'פעילות' },
-  { icon: '🍽️', label: 'ארוחה', type: 'ארוחה' },
-  { icon: '🎤', label: 'בידור', type: 'בידור' },
-  { icon: '📦', label: 'אחר', type: 'אחר' },
+  { label: 'תחבורה', type: 'תחבורה' },
+  { label: 'לינה', type: 'לינה' },
+  { label: 'פעילות', type: 'פעילות' },
+  { label: 'ארוחה', type: 'ארוחה' },
+  { label: 'בידור', type: 'בידור' },
+  { label: 'אחר', type: 'אחר' },
 ];
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
@@ -330,7 +322,7 @@ export function QuoteEditor() {
       const sellingPrice = parseFloat(data.sellingPrice) || getSellingPrice(cost, 3);
       const newItem = await quoteItemsApi.create(id, {
         type: showAddForm,
-        icon: typeInfo?.icon || '📦',
+        icon: showAddForm || 'אחר',
         name: data.name.trim(),
         supplier: data.supplier.trim(),
         description: data.description.trim(),
