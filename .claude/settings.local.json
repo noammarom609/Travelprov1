@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__miro__context_explore",
+      "mcp__miro__diagram_get_dsl",
+      "mcp__miro__doc_create",
+      "mcp__miro__diagram_create",
+      "mcp__miro__doc_get",
+      "mcp__miro__doc_update",
+      "mcp__miro__table_create",
+      "mcp__miro__table_sync_rows",
+      "mcp__miro__context_get",
+      "Bash(npx:*)",
+      "mcp__miro__board_list_items",
+      "Bash(pnpm add:*)",
+      "Bash(node scripts/miro-font-size.mjs:*)",
+      "Bash(claude:*)",
+      "Bash(npm update:*)",
+      "Bash(grep:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "playwright"
+  ]
+}

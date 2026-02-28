@@ -77,6 +77,14 @@ const SEED_SUPPLIER_DOCUMENTS = [
   { id: "sd-5", supplierId: "6", name: "ביטוח נוסעים", expiry: "2025-06-30", status: "valid" },
 ];
 
+const SEED_CLIENTS = [
+  { id: "cl-1", name: "יוסי כהן", company: "סייבר-גלובל", phone: "054-1234567", email: "yosi@cyberglobal.co.il", status: "active", notes: "לקוח VIP", totalProjects: 3, totalRevenue: 280000, createdAt: "2023-06-15" },
+  { id: "cl-2", name: "דנה לוי", company: "טכנו-פלוס", phone: "052-9876543", email: "dana@technoplus.co.il", status: "lead", notes: "פנתה דרך האתר", totalProjects: 0, totalRevenue: 0, createdAt: "2024-02-01" },
+  { id: "cl-3", name: "אבי ישראלי", company: "קליקסופט", phone: "050-5551234", email: "avi@clicksoft.co.il", status: "active", notes: "-", totalProjects: 1, totalRevenue: 38250, createdAt: "2023-11-20" },
+  { id: "cl-4", name: "מיכל ברון", company: "מדיה-וורקס", phone: "053-7778899", email: "michal@mediaworks.co.il", status: "active", notes: "אירוע שנתי קבוע", totalProjects: 2, totalRevenue: 180000, createdAt: "2023-01-10" },
+  { id: "cl-5", name: "רון אלמוג", company: "פיננס-פרו", phone: "058-3334455", email: "ron@financepro.co.il", status: "lead", notes: "מחכה להצעת מחיר", totalProjects: 0, totalRevenue: 0, createdAt: "2024-03-05" },
+];
+
 // Lookup tables
 const CATEGORY_COLORS: Record<string, string> = { "תחבורה": "#3b82f6", "מזון": "#22c55e", "אטרקציות": "#a855f7", "לינה": "#ec4899", "בידור": "#f59e0b" };
 const CATEGORY_ICONS: Record<string, string> = { "תחבורה": "🚌", "מזון": "🍽️", "אטרקציות": "🏃", "לינה": "🏨", "בידור": "🎭" };
@@ -115,6 +123,7 @@ app.post(`${PREFIX}/seed`, async (c) => {
     await kv.mset(SEED_SUPPLIER_CONTACTS.map(sc => `supplier_contact:${sc.id}`), SEED_SUPPLIER_CONTACTS);
     await kv.mset(SEED_SUPPLIER_PRODUCTS.map(sp => `supplier_product:${sp.id}`), SEED_SUPPLIER_PRODUCTS);
     await kv.mset(SEED_SUPPLIER_DOCUMENTS.map(sd => `supplier_document:${sd.id}`), SEED_SUPPLIER_DOCUMENTS);
+    await kv.mset(SEED_CLIENTS.map(cl => `client:${cl.id}`), SEED_CLIENTS);
     await kv.set("_meta:seeded_v6", { seededAt: new Date().toISOString() });
 
     console.log("[Seed] All data seeded (v6 with directPrice)");
@@ -775,6 +784,64 @@ app.get(`${PREFIX}/dashboard/stats`, async (c) => {
   } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
 });
 
+// ─── CLIENTS CRUD ───────────────────────────────
+app.get(`${PREFIX}/clients`, async (c) => {
+  try { return c.json({ data: await kv.getByPrefix("client:") }); }
+  catch (err) { return c.json({ error: `Failed to list clients: ${err}` }, 500); }
+});
+
+app.get(`${PREFIX}/clients/:id`, async (c) => {
+  try {
+    const client = await kv.get(`client:${c.req.param("id")}`);
+    if (!client) return c.json({ error: "Client not found" }, 404);
+    return c.json({ data: client });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.post(`${PREFIX}/clients`, async (c) => {
+  try {
+    const body = await c.req.json();
+    const id = body.id || `cl-${generateId()}`;
+    const client = {
+      id,
+      name: body.name || "",
+      company: body.company || "",
+      phone: body.phone || "",
+      email: body.email || "",
+      status: body.status || "lead",
+      notes: body.notes || "",
+      totalProjects: body.totalProjects ?? 0,
+      totalRevenue: body.totalRevenue ?? 0,
+      createdAt: body.createdAt || new Date().toISOString().split("T")[0],
+    };
+    await kv.set(`client:${id}`, client);
+    console.log(`[Clients] Created: ${id} — ${client.name}`);
+    return c.json({ data: client }, 201);
+  } catch (err) { return c.json({ error: `Failed to create client: ${err}` }, 500); }
+});
+
+app.put(`${PREFIX}/clients/:id`, async (c) => {
+  try {
+    const id = c.req.param("id");
+    const existing = await kv.get(`client:${id}`);
+    if (!existing) return c.json({ error: "Client not found" }, 404);
+    const body = await c.req.json();
+    const updated = { ...existing, ...body, id };
+    await kv.set(`client:${id}`, updated);
+    return c.json({ data: updated });
+  } catch (err) { return c.json({ error: `Failed to update client: ${err}` }, 500); }
+});
+
+app.delete(`${PREFIX}/clients/:id`, async (c) => {
+  try {
+    const id = c.req.param("id");
+    if (!(await kv.get(`client:${id}`))) return c.json({ error: "Client not found" }, 404);
+    await kv.del(`client:${id}`);
+    console.log(`[Clients] Deleted: ${id}`);
+    return c.json({ data: { success: true, id } });
+  } catch (err) { return c.json({ error: `Failed to delete client: ${err}` }, 500); }
+});
+
 // ─── PUBLIC CLIENT QUOTE ─────────────────────────
 app.get(`${PREFIX}/public/quote/:id`, async (c) => {
   try {
@@ -914,6 +981,115 @@ app.put(`${PREFIX}/kanban/tasks-bulk`, async (c) => {
     console.log(`[Kanban] Bulk update error: ${err}`);
     return c.json({ error: `Kanban bulk update failed: ${err}` }, 500);
   }
+});
+
+// ─── PROJECT DOCUMENTS CRUD ─────────────────────
+app.get(`${PREFIX}/projects/:projectId/documents`, async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    const all = await kv.getByPrefix("project_document:");
+    return c.json({ data: all.filter((d: any) => d.projectId === projectId) });
+  } catch (err) { return c.json({ error: `Failed to list project documents: ${err}` }, 500); }
+});
+
+app.post(`${PREFIX}/projects/:projectId/documents`, async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    const body = await c.req.json();
+    const id = body.id || `pdoc-${generateId()}`;
+    const doc = {
+      id,
+      projectId,
+      name: body.name || "",
+      type: body.type || "other",
+      expiry: body.expiry || null,
+      status: body.status || "active",
+      fileName: body.fileName || null,
+      createdAt: body.createdAt || new Date().toISOString().split("T")[0],
+    };
+    await kv.set(`project_document:${id}`, doc);
+    console.log(`[ProjectDocs] Created: ${id} — ${doc.name}`);
+    return c.json({ data: doc }, 201);
+  } catch (err) { return c.json({ error: `Failed to create project document: ${err}` }, 500); }
+});
+
+app.put(`${PREFIX}/projects/:projectId/documents/:docId`, async (c) => {
+  try {
+    const docId = c.req.param("docId");
+    const existing = await kv.get(`project_document:${docId}`);
+    if (!existing) return c.json({ error: "Project document not found" }, 404);
+    const body = await c.req.json();
+    const updated = { ...existing, ...body, id: docId, projectId: c.req.param("projectId") };
+    await kv.set(`project_document:${docId}`, updated);
+    return c.json({ data: updated });
+  } catch (err) { return c.json({ error: `Failed to update project document: ${err}` }, 500); }
+});
+
+app.delete(`${PREFIX}/projects/:projectId/documents/:docId`, async (c) => {
+  try {
+    const docId = c.req.param("docId");
+    if (!(await kv.get(`project_document:${docId}`))) return c.json({ error: "Project document not found" }, 404);
+    await kv.del(`project_document:${docId}`);
+    console.log(`[ProjectDocs] Deleted: ${docId}`);
+    return c.json({ data: { success: true, id: docId } });
+  } catch (err) { return c.json({ error: `Failed to delete project document: ${err}` }, 500); }
+});
+
+// ─── CALENDAR CRUD ──────────────────────────────
+app.get(`${PREFIX}/calendar`, async (c) => {
+  try { return c.json({ data: await kv.getByPrefix("calendar_event:") }); }
+  catch (err) { return c.json({ error: `Failed to list calendar events: ${err}` }, 500); }
+});
+
+app.get(`${PREFIX}/calendar/:id`, async (c) => {
+  try {
+    const evt = await kv.get(`calendar_event:${c.req.param("id")}`);
+    if (!evt) return c.json({ error: "Calendar event not found" }, 404);
+    return c.json({ data: evt });
+  } catch (err) { return c.json({ error: `Failed: ${err}` }, 500); }
+});
+
+app.post(`${PREFIX}/calendar`, async (c) => {
+  try {
+    const body = await c.req.json();
+    const id = body.id || `cal-${generateId()}`;
+    const evt = {
+      id,
+      title: body.title || "",
+      description: body.description || "",
+      date: body.date || new Date().toISOString().split("T")[0],
+      startTime: body.startTime || "09:00",
+      endTime: body.endTime || "10:00",
+      type: body.type || "meeting",
+      color: body.color || "#3b82f6",
+      projectId: body.projectId || null,
+    };
+    await kv.set(`calendar_event:${id}`, evt);
+    console.log(`[Calendar] Created: ${id} — ${evt.title}`);
+    return c.json({ data: evt }, 201);
+  } catch (err) { return c.json({ error: `Failed to create calendar event: ${err}` }, 500); }
+});
+
+app.put(`${PREFIX}/calendar/:id`, async (c) => {
+  try {
+    const id = c.req.param("id");
+    const existing = await kv.get(`calendar_event:${id}`);
+    if (!existing) return c.json({ error: "Calendar event not found" }, 404);
+    const body = await c.req.json();
+    const updated = { ...existing, ...body, id };
+    await kv.set(`calendar_event:${id}`, updated);
+    return c.json({ data: updated });
+  } catch (err) { return c.json({ error: `Failed to update calendar event: ${err}` }, 500); }
+});
+
+app.delete(`${PREFIX}/calendar/:id`, async (c) => {
+  try {
+    const id = c.req.param("id");
+    if (!(await kv.get(`calendar_event:${id}`))) return c.json({ error: "Calendar event not found" }, 404);
+    await kv.del(`calendar_event:${id}`);
+    console.log(`[Calendar] Deleted: ${id}`);
+    return c.json({ data: { success: true, id } });
+  } catch (err) { return c.json({ error: `Failed to delete calendar event: ${err}` }, 500); }
 });
 
 Deno.serve(app.fetch);
